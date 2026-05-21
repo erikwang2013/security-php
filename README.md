@@ -1,5 +1,7 @@
 # Security PHP
 
+> [English Documentation](README_EN.md)
+
 基于 PHP 的安全攻击检测插件，支持 27 种攻击类型检测，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架。
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
