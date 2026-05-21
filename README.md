@@ -351,6 +351,14 @@ class MyDetector extends AbstractRegexDetector
 'my_detector' => ['enabled' => true, 'mode' => 'block'],
 ```
 
+## 开源不易，欢迎支持
+
+| 微信 | 支付宝 |
+|:---:|:---:|
+| ![微信](./docs/weixinpay.png "微信") | ![支付宝](./docs/alipay.png "支付宝") |
+
+---
+
 ### 依赖
 
 - PHP >= 8.1
