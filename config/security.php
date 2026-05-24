@@ -218,6 +218,94 @@ return [
             'enabled' => true,
             'mode'    => 'block',
         ],
+
+        // HTTP 方法校验
+        // 检测请求方法是否在允许列表内，不在则返回 405 Method Not Allowed
+        'http_method' => [
+            'enabled' => true,
+            'mode'    => 'block',
+            'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'],
+        ],
+
+        // 请求体大小限制
+        // 检测请求体是否超过最大允许大小，超过则返回 413 Payload Too Large
+        // max_size 单位为字节，默认 10MB
+        'body_size' => [
+            'enabled' => true,
+            'mode'    => 'block',
+            'max_size' => 10485760, // 10 MB
+        ],
+
+        // Content-Type 校验
+        // 检测 Content-Type 是否在允许列表内，不在则返回 415 Unsupported Media Type
+        'content_type' => [
+            'enabled' => true,
+            'mode'    => 'block',
+            'allowed_types' => [
+                'application/x-www-form-urlencoded',
+                'multipart/form-data',
+                'application/json',
+                'text/plain',
+                'application/xml',
+                'text/xml',
+            ],
+        ],
+
+        // CSRF Origin 检查
+        // 检测 Origin 头是否与 Host 匹配，不匹配则可能是 CSRF 攻击
+        // allowed_origins 可选：额外允许的跨域来源
+        'csrf_origin' => [
+            'enabled' => true,
+            'mode'    => 'block',
+            'allowed_origins' => [],
+        ],
+    ],
+
+    /*
+     * IP 攻击升级黑名单
+     * 同一 IP 在 window_seconds 秒内触发 max_attempts 次攻击检测后，
+     * 自动封禁 ban_duration_seconds 秒。
+     * 数据持久化到 storage_path（默认系统临时目录）。
+     */
+    'ip_blacklist' => [
+        'enabled' => true,
+        'max_attempts' => 5,
+        'window_seconds' => 60,
+        'ban_duration_seconds' => 900, // 15 分钟
+    ],
+
+    /*
+     * 存储配置
+     * 控制系统持久化数据的存储后端
+     *
+     * type: 存储类型
+     *   'file'  — 本地 JSON 文件（默认，零依赖）
+     *   'redis' — Redis（分布式 / 高可用场景，需 php-redis 扩展）
+     *   'cache' — 文件缓存（每个 key 独立文件，适合高并发读写）
+     */
+    'storage' => [
+        'type' => 'file',
+
+        // File 存储配置（type=file 时生效）
+        'file' => [
+            'path' => '', // 留空使用 sys_get_temp_dir() . '/security_storage.json'
+        ],
+
+        // Redis 存储配置（type=redis 时生效）
+        'redis' => [
+            'host'     => '127.0.0.1',
+            'port'     => 6379,
+            'timeout'  => 2.0,
+            'password' => null,
+            'database' => 0,
+            'prefix'   => 'security:',
+        ],
+
+        // Cache 存储配置（type=cache 时生效）
+        'cache' => [
+            'path'   => '', // 留空使用 sys_get_temp_dir() . '/security_cache'
+            'prefix' => 'security_',
+        ],
     ],
 
     /*

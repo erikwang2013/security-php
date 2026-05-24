@@ -8,11 +8,17 @@ declare(strict_types=1);
 
 namespace Erikwang2013\Security;
 
+use Erikwang2013\Security\Storage\FileStorage;
+use Erikwang2013\Security\Storage\RedisStorage;
+use Erikwang2013\Security\Storage\CacheStorage;
+use Erikwang2013\Security\Storage\StorageInterface;
+
 class SecurityGuard
 {
     private static ?DetectorChain $chain = null;
     private static ?Logger $logger = null;
     private static ?array $config = null;
+    private static ?IpBlacklist $ipBlacklist = null;
 
     /**
      * Initialize with config. Called once by middleware or bootstrap.
@@ -27,6 +33,12 @@ class SecurityGuard
 
         self::$chain = new DetectorChain();
         self::$logger = new Logger($config['log'] ?? []);
+
+        $ipBlacklistConfig = $config['ip_blacklist'] ?? [];
+        if (!empty($ipBlacklistConfig['enabled'])) {
+            $storage = self::createStorage($config['storage'] ?? []);
+            self::$ipBlacklist = new IpBlacklist($ipBlacklistConfig, $storage);
+        }
 
         $detectorsConfig = $config['detectors'] ?? [];
         $detectorMap = [
@@ -57,6 +69,10 @@ class SecurityGuard
             'websocket'          => Detector\WebSocketDetector::class,
             'cors'               => Detector\CorsDetector::class,
             'dns_rebinding'      => Detector\DnsRebindingDetector::class,
+            'http_method'        => Detector\HttpMethodDetector::class,
+            'body_size'          => Detector\BodySizeDetector::class,
+            'content_type'       => Detector\ContentTypeDetector::class,
+            'csrf_origin'        => Detector\CsrfOriginDetector::class,
         ];
 
         foreach ($detectorMap as $key => $class) {
@@ -87,6 +103,24 @@ class SecurityGuard
             return [];
         }
 
+        // IP blacklist check
+        if ($ip && self::$ipBlacklist !== null && self::$ipBlacklist->isBanned($ip)) {
+            $info = self::$ipBlacklist->getBanInfo($ip);
+            $bannedUntil = $info['banned_until'] ?? 0;
+            $banThreat = new ThreatResult(
+                type: 'ip_blacklist',
+                severity: 'high',
+                field: '_server.REMOTE_ADDR',
+                payload: $ip,
+                detail: 'IP temporarily banned until ' . date('Y-m-d H:i:s', $bannedUntil),
+                httpStatus: 403,
+            );
+            if (self::$logger !== null) {
+                self::$logger->log($banThreat, $meta);
+            }
+            return [$banThreat];
+        }
+
         $filtered = self::filterWhitelistFields(self::flattenData($data));
 
         $oldLimit = ini_get('pcre.backtrack_limit');
@@ -101,6 +135,11 @@ class SecurityGuard
             if (self::$logger !== null) {
                 self::$logger->log($threat, $meta);
             }
+        }
+
+        // Record IP for attack escalation
+        if (!empty($threats) && $ip && self::$ipBlacklist !== null) {
+            self::$ipBlacklist->record($ip);
         }
 
         return $threats;
@@ -124,9 +163,17 @@ class SecurityGuard
 
     /**
      * Get block HTTP status code.
+     * When threats are provided, returns the first non-default status code among them.
      */
-    public static function blockStatusCode(): int
+    public static function blockStatusCode(?array $threats = null): int
     {
+        if ($threats !== null) {
+            foreach ($threats as $threat) {
+                if ($threat instanceof ThreatResult && $threat->httpStatus !== 403) {
+                    return $threat->httpStatus;
+                }
+            }
+        }
         return (int) (self::getConfig()['block_status_code'] ?? 403);
     }
 
@@ -240,6 +287,37 @@ class SecurityGuard
     }
 
     /**
+     * Get a configuration option for a specific detector.
+     */
+    public static function detectorOption(string $detector, string $option, mixed $default = null): mixed
+    {
+        $config = self::getConfig();
+        return $config['detectors'][$detector][$option] ?? $default;
+    }
+
+    /**
+     * Get the IpBlacklist instance (for testing).
+     */
+    public static function getIpBlacklist(): ?IpBlacklist
+    {
+        return self::$ipBlacklist;
+    }
+
+    /**
+     * Create a storage adapter from config.
+     */
+    private static function createStorage(array $config): StorageInterface
+    {
+        $type = strtolower($config['type'] ?? 'file');
+
+        return match ($type) {
+            'redis' => new RedisStorage($config['redis'] ?? []),
+            'cache' => new CacheStorage($config['cache'] ?? []),
+            default => new FileStorage($config['file'] ?? []),
+        };
+    }
+
+    /**
      * Reset state (for testing).
      */
     public static function reset(): void
@@ -247,5 +325,6 @@ class SecurityGuard
         self::$chain = null;
         self::$logger = null;
         self::$config = null;
+        self::$ipBlacklist = null;
     }
 }

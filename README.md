@@ -2,7 +2,7 @@
 
 > [English Documentation](README_EN.md)
 
-基于 PHP 的安全攻击检测插件，支持 27 种攻击类型检测，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架。
+基于 PHP 的安全攻击检测插件，支持 31 种攻击类型检测，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架。
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -10,7 +10,7 @@ Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ## 项目说明
 
-Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、字段白名单、日志轮转和去重。
+Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。
 
 ### 支持的攻击类型
 
@@ -42,6 +42,16 @@ Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配�
 | `cors` | CORS 绕过 — `Origin: null`、`Access-Control-Allow-*` 头注入、preflight 投毒 |
 | `websocket` | WebSocket 劫持 — Upgrade 头注入、null Origin 绕过、ws:// URL 检测 |
 | `dns_rebinding` | DNS 重绑定 — Host 头内网 IP、localhost、无 TLD 短主机名 |
+
+#### HTTP 协议层校验
+
+| 检测器 | 说明 |
+|---|---|
+| `http_method` | HTTP 方法校验 — 仅允许配置的 HTTP 方法（GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH），非法方法返回 **405** |
+| `body_size` | 请求体大小限制 — 超过配置上限（默认 10MB）返回 **413** |
+| `content_type` | Content-Type 校验 — 仅允许配置的 MIME 类型，非法类型返回 **415** |
+| `csrf_origin` | CSRF Origin 检查 — 检测跨域请求 Origin 头是否与 Host 匹配，支持额外跨域白名单 |
+| `ip_blacklist` | IP 攻击升级黑名单 — 同一 IP 在窗口时间内触发 N 次攻击后自动封禁（默认 5次/60s → 封禁15分钟），数据通过可插拔存储后端（File/Redis/Cache）持久化 |
 
 #### 数据与序列化攻击
 
@@ -200,7 +210,8 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 ### 拦截配置
 
 ```php
-'block_status_code' => 403,
+'block_status_code' => 403,   // 默认 HTTP 状态码。当检测器返回自定义状态码时（如 405/413/415），
+                              // SecurityGuard::blockStatusCode($threats) 优先使用检测器的状态码
 'block_message'     => 'Request blocked by security policy',
 ```
 
@@ -239,6 +250,48 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 'whitelist_fields' => ['_token', '_method', 'csrf_token'],
 ```
 
+### IP 攻击升级黑名单
+
+```php
+'ip_blacklist' => [
+    'enabled'             => true,
+    'max_attempts'        => 5,     // 窗口内最大攻击次数
+    'window_seconds'      => 60,    // 计数窗口（秒），超过后重置
+    'ban_duration_seconds' => 900,  // 封禁时长（秒），默认 15 分钟
+],
+```
+
+当同一 IP 在 `window_seconds` 秒内触发 `max_attempts` 次任意攻击检测后，该 IP 被封禁 `ban_duration_seconds` 秒。封禁期间所有请求直接返回 403。
+
+### 存储配置
+
+```php
+'storage' => [
+    'type' => 'file',  // 'file' | 'redis' | 'cache'
+
+    // File 存储（默认，零依赖）
+    'file' => ['path' => ''],
+
+    // Redis 存储（需 php-redis 扩展，适合分布式场景）
+    'redis' => [
+        'host'     => '127.0.0.1',
+        'port'     => 6379,
+        'timeout'  => 2.0,
+        'password' => null,
+        'database' => 0,
+        'prefix'   => 'security:',
+    ],
+
+    // Cache 文件缓存（每个 key 独立文件，适合高并发读写）
+    'cache' => [
+        'path'   => '',
+        'prefix' => 'security_',
+    ],
+],
+```
+
+`file` 模式将数据存储在单个 JSON 文件中（flock 原子写入）。`redis` 使用 Redis 扩展实现分布式共享存储。`cache` 将每个 key 存为独立文件，避免单文件写入竞争。
+
 ---
 
 ## 设计说明
@@ -256,32 +309,42 @@ HTTP Request
          │
          ▼
 ┌─────────────────┐
-│  SecurityGuard   │  入口门面：IP 白名单 → 字段白名单 → 嵌套扁平化 → 正则超时保护 → 扫描
+│  SecurityGuard   │  入口门面：IP 白名单 → IP 黑名单检查 → 字段白名单 → 嵌套扁平化 → 正则超时保护 → 扫描
+│                 │  攻击记录：扫描后若发现威胁，自动记录 IP 到 IpBlacklist
 └────────┬────────┘
          │
-         ▼
-┌─────────────────┐
-│  DetectorChain   │  责任链：按序执行所有已启用的检测器，收集所有 ThreatResult
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  27 Detectors    │  每个检测器继承 AbstractRegexDetector，仅定义 name() + patterns()
-│  (strategy)      │  三个特殊检测器自定义 detect()：Upload（文件内容扫描）、
-│                 │  JwtAttack（JWT 头解码分析）、PrototypePollution（键名检查）
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│     Logger       │  攻击日志：fopen+flock 原子写入、按大小轮转、CRLF 注入防护、去重
-└─────────────────┘
+    ┌────┴────┐
+    ▼         ▼
+┌────────┐ ┌──────────────┐
+│IpBlacklist│ │ DetectorChain │  责任链：按序执行所有已启用的检测器，收集所有 ThreatResult
+│         │ └──────┬───────┘
+│  ┌────┐ │        │
+│  │Storage││        │
+│  │File/ ││        │
+│  │Redis/││        │
+│  │Cache ││        │
+└──┴────┴─┘        │
+                  ▼
+         ┌─────────────────┐
+         │  31 Detectors    │  23 个继承 AbstractRegexDetector，仅定义 name() + patterns()
+         │  (strategy)      │  8 个自定义 detect()：Upload（文件内容扫描）、
+         │                 │  JwtAttack（JWT 头解码）、PrototypePollution（键名检查）、
+         │                 │  HttpMethod/BodySize/ContentType/CsrfOrigin（$_SERVER 检查）
+         └────────┬────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │     Logger       │  攻击日志：fopen+flock 原子写入、按大小轮转、CRLF 注入防护、去重
+         └─────────────────┘
 ```
 
 ### 关键设计决策
 
 **1. 抽象检测器基类**
 
-27 个检测器中的 23 个继承 `AbstractRegexDetector`，每个仅需定义 `name()` 和 `patterns()` 方法（约 15 行代码）。消除了 ~500 行重复的扫描循环代码。修改扫描逻辑（如新增嵌套数组支持）只需改动基类一处。
+31 个检测器中的 23 个继承 `AbstractRegexDetector`，每个仅需定义 `name()` 和 `patterns()` 方法（约 15 行代码）。消除了 ~500 行重复的扫描循环代码。修改扫描逻辑（如新增嵌套数组支持）只需改动基类一处。
+
+其余 8 个检测器直接实现 `DetectorInterface` 并自定义 `detect()` 方法：`UploadDetector`（文件扩展名+内容扫描）、`JwtAttackDetector`（JWT 结构解码分析）、`PrototypePollutionDetector`（对象键名检查）、`HttpMethodDetector` / `BodySizeDetector` / `ContentTypeDetector` / `CsrfOriginDetector`（$_SERVER 超全局变量检查）。
 
 ```php
 class XssDetector extends AbstractRegexDetector
@@ -320,9 +383,28 @@ class XssDetector extends AbstractRegexDetector
 | 原子日志写入 | Logger::log() | fopen+flock+fwrite，避免竞态 |
 | 敏感数据掩码 | DataLeakDetector | AWS Key 等敏感信息在日志中显示为 `AKIAIOS***XAMPLE` |
 | IP 白名单 CIDR | SecurityGuard | 支持 IPv4 ip2long + 位掩码、IPv6 inet_pton + 二进制匹配 |
+| IP 攻击升级黑名单 | IpBlacklist | 窗口内攻击计数、自动封禁，可插拔存储后端（File/Redis/Cache），flock 原子写入（File 模式） |
 | 默认 log 模式 | config | 高误报检测器默认仅记录不拦截 |
 
-**4. 框架适配策略**
+**4. 可插拔存储抽象**
+
+`IpBlacklist` 通过 `StorageInterface` 与持久化层解耦。`SecurityGuard::createStorage()` 工厂根据 `storage.type` 配置创建对应适配器注入：
+
+```php
+interface StorageInterface {
+    get(string $key): mixed;  set(string $key, mixed $value): void;
+    delete(string $key): void; has(string $key): bool;
+    all(): array;             clear(): void;
+}
+```
+
+| 适配器 | 存储方式 | 适用场景 |
+|---|---|---|
+| `FileStorage` | 单 JSON 文件 + `flock` | 默认，零依赖 |
+| `RedisStorage` | Redis（php-redis 扩展） | 分布式 / 高可用 |
+| `CacheStorage` | 每 key 独立序列化文件 | 高并发，无单文件写入竞争 |
+
+**5. 框架适配策略**
 
 - 中间件层唯一职责：从框架 Request 提取数据 → 调用 SecurityGuard
 - 核心检测逻辑与框架零耦合，仅依赖 PHP 8.1 标准库
@@ -330,9 +412,10 @@ class XssDetector extends AbstractRegexDetector
 - Webman/ThinkPHP/Hyperf 手动在中间件配置中注册
 - 全局函数 `security_guard()` 支持无框架项目
 
-**5. 扩展新检测器**
+**6. 扩展新检测器**
 
 ```php
+// 方式一：正则匹配检测器（继承 AbstractRegexDetector）
 // 1. 创建 src/Detector/MyDetector.php
 class MyDetector extends AbstractRegexDetector
 {
@@ -344,11 +427,32 @@ class MyDetector extends AbstractRegexDetector
     }
 }
 
+// 方式二：自定义逻辑检测器（实现 DetectorInterface）
+// 适用于检查 $_SERVER、文件系统等非输入数据的场景
+class MyCustomDetector implements DetectorInterface
+{
+    public function name(): string { return 'my_custom'; }
+    public function detect(array $data): ?ThreatResult
+    {
+        // 自定义检测逻辑，可返回自定义 HTTP 状态码
+        return new ThreatResult(
+            type: 'my_custom',
+            severity: 'high',
+            field: '_server.SOME_VAR',
+            payload: $_SERVER['SOME_VAR'] ?? '',
+            detail: 'Custom attack detected',
+            httpStatus: 418, // 自定义状态码
+        );
+    }
+}
+
 // 2. 在 SecurityGuard::$detectorMap 中注册
 'my_detector' => Detector\MyDetector::class,
+'my_custom'   => Detector\MyCustomDetector::class,
 
 // 3. 在 config/security.php 中添加配置
 'my_detector' => ['enabled' => true, 'mode' => 'block'],
+'my_custom'   => ['enabled' => true, 'mode' => 'block'],
 ```
 
 ## 开源不易，欢迎支持
@@ -374,7 +478,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (163 tests, 497 assertions)
+OK (192 tests, 578 assertions)
 ```
 
 ## License

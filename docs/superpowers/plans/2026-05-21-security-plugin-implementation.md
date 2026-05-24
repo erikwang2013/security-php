@@ -1,5 +1,18 @@
 # Security Plugin Implementation Plan
 
+> **Note (2026-05-25):** This document describes the initial v1 implementation plan (Tasks 1-13). The project has since evolved to v2 with significant additions:
+> - **31 detectors** (up from 5) covering injection, protocol, data/serialization, file/sensitive data, and HTTP protocol validation
+> - **HTTP protocol validators**: HttpMethod (405), BodySize (413), ContentType (415), CsrfOrigin
+> - **IP attack escalation blacklist** (`IpBlacklist`): file-persisted IP tracking with auto-ban (5/60s → 15min)
+> - **AbstractRegexDetector** base class eliminates ~500 lines of duplicated scan logic
+> - **Per-threat HTTP status codes**: `ThreatResult::$httpStatus` allows detectors to specify exact status (405/413/415)
+> - **Nested array flattening**: recursive key-value extraction with dot-notation paths
+> - **IPv6 CIDR support**: `inet_pton` + binary matching for IP whitelist
+> - **Pluggable storage**: `StorageInterface` with FileStorage (JSON+flock), RedisStorage (php-redis), CacheStorage (file-per-key) backends — `IpBlacklist` decoupled from I/O
+> - **192 tests, 578 assertions** covering all 31 detectors, storage adapters, and integration scenarios
+>
+> See `README.md` and `docs/superpowers/specs/2026-05-21-security-plugin-design.md` for current architecture.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `erikwang2013/security-php` — a Composer-installable PHP security attack detection plugin with framework adapters for Laravel, Webman, ThinkPHP, Hyperf.

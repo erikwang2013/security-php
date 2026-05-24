@@ -2,7 +2,7 @@
 
 > [中文文档](README.md)
 
-A PHP security attack detection plugin featuring 27 threat detectors and compatibility with Laravel, Webman, ThinkPHP, and Hyperf.
+A PHP security attack detection plugin featuring 31 threat detectors and compatibility with Laravel, Webman, ThinkPHP, and Hyperf.
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -10,7 +10,7 @@ Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ## Overview
 
-Security PHP is a lightweight PHP security middleware that detects common web attack payloads through regex pattern matching and structural analysis. Each detector is independently configurable (enable/disable + block/log mode), with IP whitelisting (IPv4/IPv6 CIDR), field whitelisting, log rotation, and deduplication.
+Security PHP is a lightweight PHP security middleware that detects common web attack payloads through regex pattern matching and structural analysis. Each detector is independently configurable (enable/disable + block/log mode), with IP whitelisting (IPv4/IPv6 CIDR), IP attack escalation blacklist (5 attempts/60s → 15min ban), field whitelisting, log rotation, and deduplication. Detectors can return custom HTTP status codes (405/413/415, etc.). Persistent data supports File/Redis/Cache storage backends, switchable via config.
 
 ### Supported Attack Types
 
@@ -42,6 +42,16 @@ Security PHP is a lightweight PHP security middleware that detects common web at
 | `cors` | CORS bypass — `Origin: null`, `Access-Control-Allow-*` header injection, preflight poisoning |
 | `websocket` | WebSocket hijacking — Upgrade header injection, null Origin bypass, `ws://` URL detection |
 | `dns_rebinding` | DNS rebinding — Host header with private IPs, localhost, short hostnames without TLDs |
+
+#### HTTP Protocol Validation
+
+| Detector | Coverage |
+|---|---|
+| `http_method` | HTTP method validation — only allows configured methods (GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH), returns **405** |
+| `body_size` | Request body size limit — returns **413** when exceeding configured max (default 10MB) |
+| `content_type` | Content-Type validation — only allows configured MIME types, returns **415** |
+| `csrf_origin` | CSRF Origin check — validates Origin header against Host, supports additional cross-origin whitelist |
+| `ip_blacklist` | IP attack escalation blacklist — auto-bans IP after N attacks within window (default 5/60s → 15min ban), persisted via pluggable storage backends (File/Redis/Cache) |
 
 #### Data & Serialization Attacks
 
@@ -195,7 +205,8 @@ The config file lives at `config/security.php`. All options are documented with 
 ### Block Response
 
 ```php
-'block_status_code' => 403,
+'block_status_code' => 403,   // default HTTP status. When a detector specifies a custom code (405/413/415),
+                              // SecurityGuard::blockStatusCode($threats) prioritizes the detector's code
 'block_message'     => 'Request blocked by security policy',
 ```
 
@@ -234,6 +245,48 @@ Log format:
 'whitelist_fields' => ['_token', '_method', 'csrf_token'],
 ```
 
+### IP Attack Escalation Blacklist
+
+```php
+'ip_blacklist' => [
+    'enabled'             => true,
+    'max_attempts'        => 5,     // max attacks within window
+    'window_seconds'      => 60,    // counting window (seconds), resets after expiry
+    'ban_duration_seconds' => 900,  // ban duration (seconds), default 15 minutes
+],
+```
+
+When an IP triggers `max_attempts` attack detections within `window_seconds`, it is banned for `ban_duration_seconds`. All requests from banned IPs return 403 immediately.
+
+### Storage Configuration
+
+```php
+'storage' => [
+    'type' => 'file',  // 'file' | 'redis' | 'cache'
+
+    // File storage (default, zero dependencies)
+    'file' => ['path' => ''],
+
+    // Redis storage (requires php-redis extension, for distributed setups)
+    'redis' => [
+        'host'     => '127.0.0.1',
+        'port'     => 6379,
+        'timeout'  => 2.0,
+        'password' => null,
+        'database' => 0,
+        'prefix'   => 'security:',
+    ],
+
+    // Cache file storage (one file per key, better for high-concurrency)
+    'cache' => [
+        'path'   => '',
+        'prefix' => 'security_',
+    ],
+],
+```
+
+`file` stores data in a single JSON file with `flock` atomic writes. `redis` uses the Redis extension for distributed shared storage. `cache` stores each key as an independent file, avoiding single-file write contention.
+
 ---
 
 ## Design
@@ -251,32 +304,41 @@ HTTP Request
          │
          ▼
 ┌─────────────────┐
-│  SecurityGuard   │  Facade: IP whitelist → field whitelist → nested flattening → backtrack limit → scan
+│  SecurityGuard   │  Facade: IP whitelist → IP blacklist check → field whitelist → nested flattening → scan
+│                 │  Post-scan: records attacking IPs into IpBlacklist
 └────────┬────────┘
          │
-         ▼
-┌─────────────────┐
-│  DetectorChain   │  Chain of Responsibility: invoke all enabled detectors in order, collect ThreatResult[]
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  27 Detectors    │  Each extends AbstractRegexDetector, defines only name() + patterns()
-│  (strategy)      │  3 special detectors override detect(): Upload (file content scan),
-│                 │  JwtAttack (JWT header decoding), PrototypePollution (key-name inspection)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│     Logger       │  Attack log: fopen+flock atomic writes, size-based rotation, CRLF sanitization, dedup
-└─────────────────┘
+    ┌────┴────┐
+    ▼         ▼
+┌────────┐ ┌──────────────┐
+│IpBlacklist│ │ DetectorChain │  Chain of Responsibility: invoke all enabled detectors, collect ThreatResult[]
+│         │ └──────┬───────┘
+│  ┌────┐ │        │
+│  │Storage││        │
+│  │File/ ││        │
+│  │Redis/││        │
+│  │Cache ││        │
+└──┴────┴─┘        │
+                  ▼
+         ┌─────────────────┐
+         │  31 Detectors    │  23 extend AbstractRegexDetector, define only name() + patterns()
+         │  (strategy)      │  8 override detect(): Upload (file scan), JwtAttack (JWT decode),
+         │                 │  PrototypePollution (key check), HttpMethod/BodySize/ContentType/CsrfOrigin (server check)
+         └────────┬────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │     Logger       │  Attack log: fopen+flock atomic writes, size-based rotation, CRLF sanitization, dedup
+         └─────────────────┘
 ```
 
 ### Design Decisions
 
 **1. Abstract Detector Base Class**
 
-23 of 27 detectors extend `AbstractRegexDetector`. Each is ~15 lines defining only `name()` and `patterns()`. Eliminates ~500 lines of duplicated scan loops. A change to the scanning logic (e.g., adding nested array support) modifies a single file.
+23 of 31 detectors extend `AbstractRegexDetector`. Each is ~15 lines defining only `name()` and `patterns()`. Eliminates ~500 lines of duplicated scan loops. A change to the scanning logic (e.g., adding nested array support) modifies a single file.
+
+The remaining 8 detectors implement `DetectorInterface` directly with custom `detect()`: `UploadDetector` (file extension+content scan), `JwtAttackDetector` (JWT structure decoding), `PrototypePollutionDetector` (object key inspection), `HttpMethodDetector` / `BodySizeDetector` / `ContentTypeDetector` / `CsrfOriginDetector` ($_SERVER superglobal checks).
 
 ```php
 class XssDetector extends AbstractRegexDetector
@@ -314,9 +376,28 @@ Array values are JSON-encoded as strings for detector scanning. Field names use 
 | Atomic log writes | Logger::log() | `fopen`+`flock`+`fwrite` — no TOCTOU race |
 | Sensitive data masking | DataLeakDetector | AWS keys appear as `AKIAIOS***XAMPLE` in logs |
 | IP whitelist CIDR | SecurityGuard | IPv4 via `ip2long` + bitmask, IPv6 via `inet_pton` + binary comparison |
+| IP attack escalation blacklist | IpBlacklist | Per-IP attack counting within window, auto-ban, pluggable storage backends (File/Redis/Cache), `flock` atomic writes (File mode) |
 | Default log mode | config | High-FP detectors default to record-only |
 
-**4. Framework Adapter Strategy**
+**4. Pluggable Storage Abstraction**
+
+`IpBlacklist` is decoupled from I/O via `StorageInterface`. The `SecurityGuard::createStorage()` factory selects the adapter based on `storage.type`:
+
+```php
+interface StorageInterface {
+    get(string $key): mixed;  set(string $key, mixed $value): void;
+    delete(string $key): void; has(string $key): bool;
+    all(): array;             clear(): void;
+}
+```
+
+| Adapter | Backend | Use Case |
+|---|---|---|
+| `FileStorage` | Single JSON file + `flock` | Default, zero-dependency |
+| `RedisStorage` | Redis via php-redis extension | Distributed / HA deployments |
+| `CacheStorage` | One serialized file per key | High-concurrency, no single-file contention |
+
+**5. Framework Adapter Strategy**
 
 - Middleware layer has a single responsibility: extract data from framework Request → invoke SecurityGuard
 - Core detection logic is zero-dependency, framework-agnostic, requires only PHP 8.1 standard library
@@ -324,9 +405,10 @@ Array values are JSON-encoded as strings for detector scanning. Field names use 
 - Webman/ThinkPHP/Hyperf registered manually in middleware config
 - Global function `security_guard()` supports non-framework projects
 
-**5. Adding a New Detector**
+**6. Adding a New Detector**
 
 ```php
+// Option A: Regex-based detector (extend AbstractRegexDetector)
 // 1. Create src/Detector/MyDetector.php
 class MyDetector extends AbstractRegexDetector
 {
@@ -338,11 +420,31 @@ class MyDetector extends AbstractRegexDetector
     }
 }
 
+// Option B: Custom logic detector (implement DetectorInterface)
+// For checking $_SERVER, filesystem, or other non-input-data sources
+class MyCustomDetector implements DetectorInterface
+{
+    public function name(): string { return 'my_custom'; }
+    public function detect(array $data): ?ThreatResult
+    {
+        return new ThreatResult(
+            type: 'my_custom',
+            severity: 'high',
+            field: '_server.SOME_VAR',
+            payload: $_SERVER['SOME_VAR'] ?? '',
+            detail: 'Custom attack detected',
+            httpStatus: 418, // custom status code
+        );
+    }
+}
+
 // 2. Register in SecurityGuard::$detectorMap
 'my_detector' => Detector\MyDetector::class,
+'my_custom'   => Detector\MyCustomDetector::class,
 
 // 3. Add config in config/security.php
 'my_detector' => ['enabled' => true, 'mode' => 'block'],
+'my_custom'   => ['enabled' => true, 'mode' => 'block'],
 ```
 
 ## 开源不易，欢迎支持
@@ -368,7 +470,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (163 tests, 497 assertions)
+OK (192 tests, 578 assertions)
 ```
 
 ## License

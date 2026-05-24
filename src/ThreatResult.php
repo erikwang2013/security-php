@@ -16,5 +16,6 @@ class ThreatResult
         public readonly string $field,
         public readonly string $payload,
         public readonly string $detail,
+        public readonly int $httpStatus = 403,
     ) {}
 }

@@ -178,6 +178,113 @@ class SecurityGuardTest extends TestCase
         $this->assertSame(406, SecurityGuard::blockStatusCode());
     }
 
+    public function testBlockStatusCodeFromThreat(): void
+    {
+        SecurityGuard::init($this->config);
+        $threat = new ThreatResult(
+            type: 'test',
+            severity: 'medium',
+            field: 'x',
+            payload: 'test',
+            detail: 'test',
+            httpStatus: 405,
+        );
+        $this->assertSame(405, SecurityGuard::blockStatusCode([$threat]));
+    }
+
+    public function testBlockStatusCodeFallsBackToDefault(): void
+    {
+        SecurityGuard::init($this->config);
+        $threat = new ThreatResult(
+            type: 'test',
+            severity: 'medium',
+            field: 'x',
+            payload: 'test',
+            detail: 'test',
+        );
+        $this->assertSame(403, SecurityGuard::blockStatusCode([$threat]));
+    }
+
+    public function testBlockStatusCodeFirstNonDefaultWins(): void
+    {
+        SecurityGuard::init($this->config);
+        $threats = [
+            new ThreatResult(type: 'a', severity: 'low', field: 'x', payload: '1', detail: 'd1'),
+            new ThreatResult(type: 'b', severity: 'low', field: 'y', payload: '2', detail: 'd2', httpStatus: 413),
+        ];
+        $this->assertSame(413, SecurityGuard::blockStatusCode($threats));
+    }
+
+    // ──────────────── IP BLACKLIST INTEGRATION ────────────────
+
+    public function testBannedIpReturnsThreat(): void
+    {
+        $this->config['ip_blacklist'] = [
+            'enabled' => true,
+            'max_attempts' => 2,
+            'window_seconds' => 3600,
+            'ban_duration_seconds' => 900,
+        ];
+        SecurityGuard::init($this->config);
+
+        $ip = '203.0.113.99';
+        $blacklist = SecurityGuard::getIpBlacklist();
+        $this->assertNotNull($blacklist);
+
+        for ($i = 0; $i < 2; $i++) {
+            $blacklist->record($ip);
+        }
+
+        $this->assertTrue($blacklist->isBanned($ip));
+
+        $threats = SecurityGuard::guard(['x' => '<script>alert(1)</script>'], ['ip' => $ip]);
+        $this->assertCount(1, $threats);
+        $this->assertSame('ip_blacklist', $threats[0]->type);
+
+        $blacklist->reset();
+    }
+
+    public function testNonBannedIpNotAffected(): void
+    {
+        $this->config['ip_blacklist'] = [
+            'enabled' => true,
+            'max_attempts' => 5,
+            'window_seconds' => 60,
+            'ban_duration_seconds' => 900,
+        ];
+        SecurityGuard::init($this->config);
+
+        $threats = SecurityGuard::guard(
+            ['name' => 'John Doe'],
+            ['ip' => '198.51.100.1'],
+        );
+        $this->assertEmpty($threats);
+    }
+
+    public function testWhitelistedIpBypassesBlacklist(): void
+    {
+        $this->config['whitelist_ips'] = ['10.0.0.0/8'];
+        $this->config['ip_blacklist'] = [
+            'enabled' => true,
+            'max_attempts' => 1,
+            'window_seconds' => 3600,
+            'ban_duration_seconds' => 900,
+        ];
+        SecurityGuard::init($this->config);
+
+        $ip = '10.0.0.50';
+        $blacklist = SecurityGuard::getIpBlacklist();
+        $this->assertNotNull($blacklist);
+
+        $blacklist->record($ip);
+        $this->assertTrue($blacklist->isBanned($ip));
+
+        $threats = SecurityGuard::guard(['x' => '<script>alert(1)</script>'], ['ip' => $ip]);
+        $this->assertEmpty($threats);
+
+        $blacklist->reset();
+    }
+
     public function testBlockMessageDefault(): void
     {
         SecurityGuard::init($this->config);

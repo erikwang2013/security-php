@@ -35,6 +35,10 @@ use Erikwang2013\Security\Detector\PrototypePollutionDetector;
 use Erikwang2013\Security\Detector\WebSocketDetector;
 use Erikwang2013\Security\Detector\CorsDetector;
 use Erikwang2013\Security\Detector\DnsRebindingDetector;
+use Erikwang2013\Security\Detector\HttpMethodDetector;
+use Erikwang2013\Security\Detector\BodySizeDetector;
+use Erikwang2013\Security\Detector\ContentTypeDetector;
+use Erikwang2013\Security\Detector\CsrfOriginDetector;
 use Erikwang2013\Security\DetectorInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -299,6 +303,10 @@ class AllDetectorsTest extends TestCase
             new WebSocketDetector(),
             new CorsDetector(),
             new DnsRebindingDetector(),
+            new HttpMethodDetector(),
+            new BodySizeDetector(),
+            new ContentTypeDetector(),
+            new CsrfOriginDetector(),
         ];
     }
 
@@ -332,7 +340,125 @@ class AllDetectorsTest extends TestCase
             'websocket' => ['x' => "foo\r\nUpgrade: websocket"],
             'cors' => ['x' => "foo\r\nAccess-Control-Allow-Origin: *"],
             'dns_rebinding' => ['x' => "foo\r\nHost: 127.0.0.1"],
+            'http_method' => ['x' => 'test'],
+            'body_size' => ['x' => 'test'],
+            'content_type' => ['x' => 'test'],
+            'csrf_origin' => ['x' => 'test'],
         ];
         return $payloads[$name] ?? ['x' => 'test'];
+    }
+
+    // ──────────────── HTTP METHOD DETECTOR ────────────────
+
+    public function testHttpMethodDetectorBlocksUnknownMethod(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'TRACE';
+        $detector = new HttpMethodDetector();
+        $result = $detector->detect([]);
+        $this->assertNotNull($result);
+        $this->assertSame('http_method', $result->type);
+        $this->assertSame(405, $result->httpStatus);
+    }
+
+    public function testHttpMethodDetectorAllowsKnownMethod(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $detector = new HttpMethodDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    public function testHttpMethodDetectorNullWhenNoServerVar(): void
+    {
+        unset($_SERVER['REQUEST_METHOD']);
+        $detector = new HttpMethodDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    // ──────────────── BODY SIZE DETECTOR ────────────────
+
+    public function testBodySizeDetectorBlocksLargeBody(): void
+    {
+        $_SERVER['CONTENT_LENGTH'] = '20971520'; // 20 MB
+        $detector = new BodySizeDetector();
+        $result = $detector->detect([]);
+        $this->assertNotNull($result);
+        $this->assertSame('body_size', $result->type);
+        $this->assertSame(413, $result->httpStatus);
+    }
+
+    public function testBodySizeDetectorAllowsNormalBody(): void
+    {
+        $_SERVER['CONTENT_LENGTH'] = '1024';
+        $detector = new BodySizeDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    public function testBodySizeDetectorNullWhenNoServerVar(): void
+    {
+        unset($_SERVER['CONTENT_LENGTH']);
+        $detector = new BodySizeDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    // ──────────────── CONTENT TYPE DETECTOR ────────────────
+
+    public function testContentTypeDetectorBlocksUnknownType(): void
+    {
+        $_SERVER['CONTENT_TYPE'] = 'application/octet-stream';
+        $detector = new ContentTypeDetector();
+        $result = $detector->detect([]);
+        $this->assertNotNull($result);
+        $this->assertSame('content_type', $result->type);
+        $this->assertSame(415, $result->httpStatus);
+    }
+
+    public function testContentTypeDetectorAllowsKnownType(): void
+    {
+        $_SERVER['CONTENT_TYPE'] = 'application/json; charset=utf-8';
+        $detector = new ContentTypeDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    public function testContentTypeDetectorNullWhenNoServerVar(): void
+    {
+        unset($_SERVER['CONTENT_TYPE']);
+        $detector = new ContentTypeDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    // ──────────────── CSRF ORIGIN DETECTOR ────────────────
+
+    public function testCsrfOriginDetectorBlocksMismatchedOrigin(): void
+    {
+        $_SERVER['HTTP_ORIGIN'] = 'https://evil.com';
+        $_SERVER['HTTP_HOST'] = 'good.com';
+        $detector = new CsrfOriginDetector();
+        $result = $detector->detect([]);
+        $this->assertNotNull($result);
+        $this->assertSame('csrf_origin', $result->type);
+        $this->assertSame(403, $result->httpStatus);
+    }
+
+    public function testCsrfOriginDetectorAllowsMatchingOrigin(): void
+    {
+        $_SERVER['HTTP_ORIGIN'] = 'https://mysite.com';
+        $_SERVER['HTTP_HOST'] = 'mysite.com';
+        $detector = new CsrfOriginDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
+    }
+
+    public function testCsrfOriginDetectorNullWhenNoServerVar(): void
+    {
+        unset($_SERVER['HTTP_ORIGIN']);
+        $detector = new CsrfOriginDetector();
+        $result = $detector->detect([]);
+        $this->assertNull($result);
     }
 }
