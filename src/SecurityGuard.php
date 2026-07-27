@@ -128,7 +128,9 @@ class SecurityGuard
         try {
             $threats = self::$chain->scan($filtered);
         } finally {
-            ini_set('pcre.backtrack_limit', $oldLimit);
+            if ($oldLimit !== false && $oldLimit !== '') {
+                ini_set('pcre.backtrack_limit', $oldLimit);
+            }
         }
 
         foreach ($threats as $threat) {
@@ -272,15 +274,29 @@ class SecurityGuard
         foreach ($data as $key => $value) {
             $path = $prefix === '' ? (string) $key : "{$prefix}.{$key}";
             if (is_array($value)) {
-                // Recurse into nested arrays
-                $flat = array_merge($flat, self::flattenData($value, $path));
+                $nested = self::flattenData($value, $path);
+                foreach ($nested as $nk => $nv) {
+                    // If nested path collides with a previously set top-level key,
+                    // the nested value wins (more specific). No silent drops.
+                    $flat[$nk] = $nv;
+                }
                 // Also keep a JSON representation for scanning (catches array-based attacks)
                 $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 if ($encoded !== false) {
                     $flat[$path] = $encoded;
                 }
             } elseif (is_scalar($value)) {
-                $flat[$path] = (string) $value;
+                // Resolve collisions: if this path already exists (from a nested value),
+                // append a suffix to preserve both values for scanning
+                if (array_key_exists($path, $flat)) {
+                    $suffix = 1;
+                    while (array_key_exists("{$path}#{$suffix}", $flat)) {
+                        $suffix++;
+                    }
+                    $flat["{$path}#{$suffix}"] = (string) $value;
+                } else {
+                    $flat[$path] = (string) $value;
+                }
             }
         }
         return $flat;

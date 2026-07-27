@@ -8,8 +8,6 @@ declare(strict_types=1);
 
 namespace Erikwang2013\Security\Detector;
 
-use Erikwang2013\Security\ThreatResult;
-
 class DataLeakDetector extends AbstractRegexDetector
 {
     public function name(): string
@@ -48,39 +46,8 @@ class DataLeakDetector extends AbstractRegexDetector
         ];
     }
 
-    public function detect(array $data): ?ThreatResult
+    protected function transformPayload(string $payload): string
     {
-        foreach ($data as $field => $value) {
-            if (!is_string($value)) {
-                continue;
-            }
-            foreach ($this->patterns() as $pattern => $info) {
-                $matchResult = preg_match($pattern, $value);
-                if ($matchResult === false) {
-                    error_log(sprintf(
-                        'Security: Invalid regex pattern in detector "%s": %s',
-                        $this->name(),
-                        $pattern,
-                    ));
-                    continue;
-                }
-                if ($matchResult === 1) {
-                    return new ThreatResult(
-                        type: 'data_leak',
-                        severity: $info['severity'],
-                        field: (string) $field,
-                        payload: $this->maskPayload($value),
-                        detail: $info['detail'],
-                    );
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private function maskPayload(string $s): string
-    {
-        return strlen($s) > 20 ? substr($s, 0, 10) . '***' . substr($s, -6) : '***MASKED***';
+        return strlen($payload) > 20 ? substr($payload, 0, 10) . '***' . substr($payload, -6) : '***MASKED***';
     }
 }

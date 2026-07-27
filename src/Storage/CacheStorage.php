@@ -32,31 +32,30 @@ class CacheStorage implements StorageInterface
             return null;
         }
 
-        $data = @unserialize($contents);
-        if ($data === false) {
+        $data = json_decode($contents, true);
+        if (!is_array($data) || count($data) !== 2 || !array_key_exists(0, $data)) {
             return null;
         }
 
         // Check expiry: stored as [expiry, value]
-        if (is_array($data) && count($data) === 2 && isset($data[0], $data[1])) {
-            if ($data[0] > 0 && $data[0] < time()) {
-                @unlink($path);
-                return null;
-            }
-            return $data[1];
+        if ($data[0] > 0 && $data[0] < time()) {
+            @unlink($path);
+            return null;
         }
-
-        return $data;
+        return $data[1];
     }
 
     public function set(string $key, mixed $value): void
     {
         $this->ensureDir();
         $path = $this->path($key);
-        $data = serialize([0, $value]); // [expiry=0 (never), value]
+        $encoded = json_encode([0, $value], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($encoded === false) {
+            return;
+        }
 
         $tmp = $path . '.' . uniqid('', true);
-        if (@file_put_contents($tmp, $data, LOCK_EX) !== false) {
+        if (@file_put_contents($tmp, $encoded, LOCK_EX) !== false) {
             @rename($tmp, $path);
         }
     }

@@ -42,11 +42,12 @@ class PrototypePollutionDetector extends AbstractRegexDetector
         // e.g. {"__proto__": {"isAdmin": true}}
         foreach ($data as $field => $value) {
             if ($field === '__proto__' || $field === 'constructor') {
+                $encoded = is_array($value) ? json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
                 return new ThreatResult(
                     type: 'prototype_pollution',
                     severity: 'critical',
                     field: (string) $field,
-                    payload: is_array($value) ? json_encode($value) : (string) $value,
+                    payload: is_string($encoded) ? $encoded : '{payload encoding failed}',
                     detail: "Prototype pollution: direct {$field} key in input",
                 );
             }

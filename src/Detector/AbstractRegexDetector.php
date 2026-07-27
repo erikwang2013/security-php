@@ -41,12 +41,21 @@ abstract class AbstractRegexDetector implements DetectorInterface
                         type: $this->name(),
                         severity: $info['severity'],
                         field: (string) $field,
-                        payload: $value,
+                        payload: $this->transformPayload($value),
                         detail: $info['detail'],
                     );
                 }
             }
         }
         return null;
+    }
+
+    /**
+     * Hook for subclasses to transform payload before logging.
+     * Override to mask sensitive data, truncate, etc.
+     */
+    protected function transformPayload(string $payload): string
+    {
+        return $payload;
     }
 }
