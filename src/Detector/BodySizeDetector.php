@@ -21,27 +21,32 @@ class BodySizeDetector implements DetectorInterface
         return 'body_size';
     }
 
-    public function detect(array $data): ?ThreatResult
+    public function priority(): int
     {
-        $contentLength = $_SERVER['CONTENT_LENGTH'] ?? null;
-        if ($contentLength === null || $contentLength === '') {
-            return null;
+        return -30;
+    }
+
+    public function detect(array $data): array
+    {
+        $contentLength = $data['_server.CONTENT_LENGTH'] ?? '';
+        if ($contentLength === '') {
+            return [];
         }
 
         $size = (int) $contentLength;
         $maxSize = (int) SecurityGuard::detectorOption('body_size', 'max_size', self::DEFAULT_MAX_SIZE);
 
         if ($size > $maxSize) {
-            return new ThreatResult(
+            return [new ThreatResult(
                 type: 'body_size',
                 severity: 'medium',
                 field: '_server.CONTENT_LENGTH',
                 payload: (string) $size,
                 detail: "Request body too large: {$size} bytes (max: {$maxSize})",
                 httpStatus: 413,
-            );
+            )];
         }
 
-        return null;
+        return [];
     }
 }

@@ -123,6 +123,13 @@ class SecurityGuard
 
         $filtered = self::filterWhitelistFields(self::flattenData($data));
 
+        // Inject $_SERVER values so detectors don't rely on superglobals
+        $filtered['_server.REQUEST_METHOD'] = $_SERVER['REQUEST_METHOD'] ?? $meta['method'] ?? '';
+        $filtered['_server.CONTENT_LENGTH'] = $_SERVER['CONTENT_LENGTH'] ?? '';
+        $filtered['_server.CONTENT_TYPE']   = $_SERVER['CONTENT_TYPE'] ?? '';
+        $filtered['_server.HTTP_ORIGIN']    = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $filtered['_server.HTTP_HOST']      = $_SERVER['HTTP_HOST'] ?? '';
+
         $oldLimit = ini_get('pcre.backtrack_limit');
         ini_set('pcre.backtrack_limit', '1000000');
         try {

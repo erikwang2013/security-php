@@ -86,6 +86,11 @@ class Logger
             }
         }
 
+        // Prevent unbounded growth in long-running processes
+        if (count($this->dedupCache) > 1000) {
+            $this->dedupCache = array_slice($this->dedupCache, -500, preserve_keys: true);
+        }
+
         if (isset($this->dedupCache[$key])) {
             return true;
         }

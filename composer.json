@@ -1,6 +1,6 @@
 {
     "name": "erikwang2013/security-php",
-    "description": "A PHP security attack detection plugin featuring 27 threat detectors and compatibility with Laravel, Webman, ThinkPHP, and Hyperf.",
+    "description": "A PHP security attack detection plugin featuring 31 threat detectors and compatibility with Laravel, Webman, ThinkPHP, and Hyperf.",
     "type": "library",
     "license": "MIT",
     "keywords": ["security", "xss", "sql-injection", "waf", "attack-detection"],

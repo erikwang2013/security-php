@@ -84,14 +84,15 @@ class DetectorChainTest extends TestCase
         return new class($name) implements DetectorInterface {
             public function __construct(private string $detectorName) {}
             public function name(): string { return $this->detectorName; }
-            public function detect(array $data): ?ThreatResult {
-                return new ThreatResult(
+            public function priority(): int { return 0; }
+            public function detect(array $data): array {
+                return [new ThreatResult(
                     type: $this->detectorName,
                     severity: 'high',
                     field: 'x',
                     payload: 'test',
                     detail: 'test match',
-                );
+                )];
             }
         };
     }
@@ -101,8 +102,9 @@ class DetectorChainTest extends TestCase
         return new class($name) implements DetectorInterface {
             public function __construct(private string $detectorName) {}
             public function name(): string { return $this->detectorName; }
-            public function detect(array $data): ?ThreatResult {
-                return null;
+            public function priority(): int { return 0; }
+            public function detect(array $data): array {
+                return [];
             }
         };
     }

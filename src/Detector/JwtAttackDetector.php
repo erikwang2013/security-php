@@ -18,7 +18,12 @@ class JwtAttackDetector implements DetectorInterface
         return 'jwt_attack';
     }
 
-    public function detect(array $data): ?ThreatResult
+    public function priority(): int
+    {
+        return 0;
+    }
+
+    public function detect(array $data): array
     {
         // JWT format: header.payload.signature — each part is base64url
         $jwtPattern = '/(?:^|\s|")([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*)(?:\s|$|")/';
@@ -46,13 +51,13 @@ class JwtAttackDetector implements DetectorInterface
 
                 // Check for "none" algorithm (signature bypass)
                 if (strtolower((string) ($headerData['alg'] ?? '')) === 'none') {
-                    return new ThreatResult(
+                    return [new ThreatResult(
                         type: 'jwt_attack',
                         severity: 'critical',
                         field: (string) $field,
                         payload: $jwt,
                         detail: 'JWT algorithm "none" — signature bypass',
-                    );
+                    )];
                 }
 
                 // Check for "alg" confusion (e.g., RS256 → HS256)
@@ -60,30 +65,30 @@ class JwtAttackDetector implements DetectorInterface
                     && isset($headerData['kid'])) {
                     $kid = $headerData['kid'];
                     if (str_contains($kid, '/') || str_contains($kid, '..') || str_contains($kid, '|')) {
-                        return new ThreatResult(
+                        return [new ThreatResult(
                             type: 'jwt_attack',
                             severity: 'critical',
                             field: (string) $field,
                             payload: $jwt,
                             detail: 'JWT kid injection for HMAC key confusion',
-                        );
+                        )];
                     }
                 }
 
                 // Check for empty signature (third part missing or empty)
                 if (count($parts) < 3 || $parts[2] === '') {
-                    return new ThreatResult(
+                    return [new ThreatResult(
                         type: 'jwt_attack',
                         severity: 'critical',
                         field: (string) $field,
                         payload: $jwt,
                         detail: 'JWT missing or empty signature',
-                    );
+                    )];
                 }
             }
         }
 
-        return null;
+        return [];
     }
 
     private function base64UrlDecode(string $data): ?string

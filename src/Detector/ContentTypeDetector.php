@@ -28,32 +28,33 @@ class ContentTypeDetector implements DetectorInterface
         return 'content_type';
     }
 
-    public function detect(array $data): ?ThreatResult
+    public function priority(): int
     {
-        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        return -25;
+    }
+
+    public function detect(array $data): array
+    {
+        $contentType = $data['_server.CONTENT_TYPE'] ?? '';
         if ($contentType === '') {
-            return null;
+            return [];
         }
 
         $allowed = SecurityGuard::detectorOption('content_type', 'allowed_types', self::DEFAULT_ALLOWED);
-
-        // Strip charset and boundary params for comparison
         $typeOnly = strtolower(trim(explode(';', $contentType)[0]));
-
-        // Allow multipart/form-data with boundary
         $baseAllowed = array_map('strtolower', $allowed);
 
         if (!in_array($typeOnly, $baseAllowed, true)) {
-            return new ThreatResult(
+            return [new ThreatResult(
                 type: 'content_type',
                 severity: 'medium',
                 field: '_server.CONTENT_TYPE',
                 payload: $contentType,
                 detail: "Unsupported Content-Type: {$contentType}",
                 httpStatus: 415,
-            );
+            )];
         }
 
-        return null;
+        return [];
     }
 }

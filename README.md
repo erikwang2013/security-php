@@ -316,7 +316,7 @@ HTTP Request
     ┌────┴────┐
     ▼         ▼
 ┌────────┐ ┌──────────────┐
-│IpBlacklist│ │ DetectorChain │  责任链：按序执行所有已启用的检测器，收集所有 ThreatResult
+│IpBlacklist│ │ DetectorChain │  优先级排序 → 执行所有检测器 → 收集全部匹配（不再仅返回首个匹配）
 │         │ └──────┬───────┘
 │  ┌────┐ │        │
 │  │Storage││        │
@@ -326,10 +326,10 @@ HTTP Request
 └──┴────┴─┘        │
                   ▼
          ┌─────────────────┐
-         │  31 Detectors    │  23 个继承 AbstractRegexDetector，仅定义 name() + patterns()
+         │  31 Detectors    │  23 个继承 AbstractRegexDetector，仅定义 name() + patterns() + priority()
          │  (strategy)      │  8 个自定义 detect()：Upload（文件内容扫描）、
          │                 │  JwtAttack（JWT 头解码）、PrototypePollution（键名检查）、
-         │                 │  HttpMethod/BodySize/ContentType/CsrfOrigin（$_SERVER 检查）
+         │                 │  HttpMethod/BodySize/ContentType/CsrfOrigin（通过 $data 解耦 $_SERVER）
          └────────┬────────┘
                   │
                   ▼
@@ -457,9 +457,9 @@ class MyCustomDetector implements DetectorInterface
 
 ## 开源不易，欢迎支持
 
-| 微信 | 支付宝 |
+| 微信支付 | 支付宝 |
 |:---:|:---:|
-| ![微信](./docs/weixinpay.png "微信") | ![支付宝](./docs/alipay.png "支付宝") |
+| <img src="./docs/weixinpay.png" alt="微信支付" width="130" height="130" /> | <img src="./docs/alipay.png" alt="支付宝" width="130" height="130" /> |
 
 ---
 

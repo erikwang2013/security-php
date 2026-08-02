@@ -21,26 +21,32 @@ class HttpMethodDetector implements DetectorInterface
         return 'http_method';
     }
 
-    public function detect(array $data): ?ThreatResult
+    public function priority(): int
     {
-        if (!isset($_SERVER['REQUEST_METHOD'])) {
-            return null;
+        return -20;
+    }
+
+    public function detect(array $data): array
+    {
+        $method = $data['_server.REQUEST_METHOD'] ?? '';
+        if ($method === '') {
+            return [];
         }
 
-        $method = strtoupper($_SERVER['REQUEST_METHOD']);
+        $method = strtoupper($method);
         $allowed = SecurityGuard::detectorOption('http_method', 'allowed_methods', self::DEFAULT_ALLOWED);
 
         if (!in_array($method, $allowed, true)) {
-            return new ThreatResult(
+            return [new ThreatResult(
                 type: 'http_method',
                 severity: 'medium',
                 field: '_server.REQUEST_METHOD',
                 payload: $method,
                 detail: 'HTTP method not allowed: ' . $method,
                 httpStatus: 405,
-            );
+            )];
         }
 
-        return null;
+        return [];
     }
 }

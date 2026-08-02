@@ -49,15 +49,15 @@ class AllDetectorsTest extends TestCase
     public function testDetectorCatchesAttack(DetectorInterface $detector, string $field, string $payload): void
     {
         $result = $detector->detect([$field => $payload]);
-        $this->assertNotNull($result, "{$detector->name()} should detect: {$payload}");
-        $this->assertSame($detector->name(), $result->type);
+        $this->assertNotEmpty($result, "{$detector->name()} should detect: {$payload}");
+        $this->assertSame($detector->name(), $result[0]->type);
     }
 
     #[DataProvider('provideSafePayloads')]
     public function testDetectorDoesNotTriggerFalsePositive(DetectorInterface $detector, string $field, string $payload): void
     {
         $result = $detector->detect([$field => $payload]);
-        $this->assertNull($result, "{$detector->name()} should NOT trigger on: {$payload}");
+        $this->assertEmpty($result, "{$detector->name()} should NOT trigger on: {$payload}");
     }
 
     public function testAllDetectorsHaveValidName(): void
@@ -72,7 +72,7 @@ class AllDetectorsTest extends TestCase
     public function testAllDetectorsReturnNullForEmptyArray(): void
     {
         foreach ($this->allDetectors() as $detector) {
-            $this->assertNull($detector->detect([]), "{$detector->name()} should return null for empty input");
+            $this->assertEmpty($detector->detect([]), "{$detector->name()} should return empty array for empty input");
         }
     }
 
@@ -80,7 +80,7 @@ class AllDetectorsTest extends TestCase
     {
         foreach ($this->allDetectors() as $detector) {
             $result = $detector->detect(['arr' => [1, 2, 3], 'num' => 42, 'bool' => true]);
-            $this->assertNull($result, "{$detector->name()} should skip non-string values");
+            $this->assertEmpty($result, "{$detector->name()} should skip non-string values");
         }
     }
 
@@ -89,12 +89,12 @@ class AllDetectorsTest extends TestCase
         $validSeverities = ['critical', 'high', 'medium', 'low'];
         foreach ($this->allDetectors() as $detector) {
             $result = $detector->detect($this->attackPayloadFor($detector->name()));
-            if ($result !== null) {
-                $this->assertContains($result->severity, $validSeverities,
-                    "{$detector->name()}: severity '{$result->severity}' should be one of: " . implode(', ', $validSeverities));
-                $this->assertNotEmpty($result->detail);
-                $this->assertNotEmpty($result->field);
-                $this->assertNotEmpty($result->payload);
+            if (!empty($result)) {
+                $this->assertContains($result[0]->severity, $validSeverities,
+                    "{$detector->name()}: severity '{$result[0]->severity}' should be one of: " . implode(', ', $validSeverities));
+                $this->assertNotEmpty($result[0]->detail);
+                $this->assertNotEmpty($result[0]->field);
+                $this->assertNotEmpty($result[0]->payload);
             }
         }
     }
@@ -352,113 +352,99 @@ class AllDetectorsTest extends TestCase
 
     public function testHttpMethodDetectorBlocksUnknownMethod(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'TRACE';
         $detector = new HttpMethodDetector();
-        $result = $detector->detect([]);
-        $this->assertNotNull($result);
-        $this->assertSame('http_method', $result->type);
-        $this->assertSame(405, $result->httpStatus);
+        $result = $detector->detect(['_server.REQUEST_METHOD' => 'TRACE']);
+        $this->assertNotEmpty($result);
+        $this->assertSame('http_method', $result[0]->type);
+        $this->assertSame(405, $result[0]->httpStatus);
     }
 
     public function testHttpMethodDetectorAllowsKnownMethod(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'POST';
         $detector = new HttpMethodDetector();
-        $result = $detector->detect([]);
-        $this->assertNull($result);
+        $result = $detector->detect(['_server.REQUEST_METHOD' => 'POST']);
+        $this->assertEmpty($result);
     }
 
     public function testHttpMethodDetectorNullWhenNoServerVar(): void
     {
-        unset($_SERVER['REQUEST_METHOD']);
         $detector = new HttpMethodDetector();
         $result = $detector->detect([]);
-        $this->assertNull($result);
+        $this->assertEmpty($result);
     }
 
     // ──────────────── BODY SIZE DETECTOR ────────────────
 
     public function testBodySizeDetectorBlocksLargeBody(): void
     {
-        $_SERVER['CONTENT_LENGTH'] = '20971520'; // 20 MB
         $detector = new BodySizeDetector();
-        $result = $detector->detect([]);
-        $this->assertNotNull($result);
-        $this->assertSame('body_size', $result->type);
-        $this->assertSame(413, $result->httpStatus);
+        $result = $detector->detect(['_server.CONTENT_LENGTH' => '20971520']);
+        $this->assertNotEmpty($result);
+        $this->assertSame('body_size', $result[0]->type);
+        $this->assertSame(413, $result[0]->httpStatus);
     }
 
     public function testBodySizeDetectorAllowsNormalBody(): void
     {
-        $_SERVER['CONTENT_LENGTH'] = '1024';
         $detector = new BodySizeDetector();
-        $result = $detector->detect([]);
-        $this->assertNull($result);
+        $result = $detector->detect(['_server.CONTENT_LENGTH' => '1024']);
+        $this->assertEmpty($result);
     }
 
     public function testBodySizeDetectorNullWhenNoServerVar(): void
     {
-        unset($_SERVER['CONTENT_LENGTH']);
         $detector = new BodySizeDetector();
         $result = $detector->detect([]);
-        $this->assertNull($result);
+        $this->assertEmpty($result);
     }
 
     // ──────────────── CONTENT TYPE DETECTOR ────────────────
 
     public function testContentTypeDetectorBlocksUnknownType(): void
     {
-        $_SERVER['CONTENT_TYPE'] = 'application/octet-stream';
         $detector = new ContentTypeDetector();
-        $result = $detector->detect([]);
-        $this->assertNotNull($result);
-        $this->assertSame('content_type', $result->type);
-        $this->assertSame(415, $result->httpStatus);
+        $result = $detector->detect(['_server.CONTENT_TYPE' => 'application/octet-stream']);
+        $this->assertNotEmpty($result);
+        $this->assertSame('content_type', $result[0]->type);
+        $this->assertSame(415, $result[0]->httpStatus);
     }
 
     public function testContentTypeDetectorAllowsKnownType(): void
     {
-        $_SERVER['CONTENT_TYPE'] = 'application/json; charset=utf-8';
         $detector = new ContentTypeDetector();
-        $result = $detector->detect([]);
-        $this->assertNull($result);
+        $result = $detector->detect(['_server.CONTENT_TYPE' => 'application/json; charset=utf-8']);
+        $this->assertEmpty($result);
     }
 
     public function testContentTypeDetectorNullWhenNoServerVar(): void
     {
-        unset($_SERVER['CONTENT_TYPE']);
         $detector = new ContentTypeDetector();
         $result = $detector->detect([]);
-        $this->assertNull($result);
+        $this->assertEmpty($result);
     }
 
     // ──────────────── CSRF ORIGIN DETECTOR ────────────────
 
     public function testCsrfOriginDetectorBlocksMismatchedOrigin(): void
     {
-        $_SERVER['HTTP_ORIGIN'] = 'https://evil.com';
-        $_SERVER['HTTP_HOST'] = 'good.com';
         $detector = new CsrfOriginDetector();
-        $result = $detector->detect([]);
-        $this->assertNotNull($result);
-        $this->assertSame('csrf_origin', $result->type);
-        $this->assertSame(403, $result->httpStatus);
+        $result = $detector->detect(['_server.HTTP_ORIGIN' => 'https://evil.com', '_server.HTTP_HOST' => 'good.com']);
+        $this->assertNotEmpty($result);
+        $this->assertSame('csrf_origin', $result[0]->type);
+        $this->assertSame(403, $result[0]->httpStatus);
     }
 
     public function testCsrfOriginDetectorAllowsMatchingOrigin(): void
     {
-        $_SERVER['HTTP_ORIGIN'] = 'https://mysite.com';
-        $_SERVER['HTTP_HOST'] = 'mysite.com';
         $detector = new CsrfOriginDetector();
-        $result = $detector->detect([]);
-        $this->assertNull($result);
+        $result = $detector->detect(['_server.HTTP_ORIGIN' => 'https://mysite.com', '_server.HTTP_HOST' => 'mysite.com']);
+        $this->assertEmpty($result);
     }
 
     public function testCsrfOriginDetectorNullWhenNoServerVar(): void
     {
-        unset($_SERVER['HTTP_ORIGIN']);
         $detector = new CsrfOriginDetector();
         $result = $detector->detect([]);
-        $this->assertNull($result);
+        $this->assertEmpty($result);
     }
 }

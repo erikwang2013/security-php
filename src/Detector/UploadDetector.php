@@ -18,6 +18,11 @@ class UploadDetector implements DetectorInterface
         return 'upload';
     }
 
+    public function priority(): int
+    {
+        return 0;
+    }
+
     private const SAFE_EXTENSIONS = [
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
         'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
@@ -26,7 +31,7 @@ class UploadDetector implements DetectorInterface
         'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac',
     ];
 
-    public function detect(array $data): ?ThreatResult
+    public function detect(array $data): array
     {
         foreach ($data as $field => $file) {
             if (!$this->isUploadFile($file)) {
@@ -38,30 +43,30 @@ class UploadDetector implements DetectorInterface
 
             $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
             if ($ext !== '' && !in_array($ext, self::SAFE_EXTENSIONS, true)) {
-                return new ThreatResult(
+                return [new ThreatResult(
                     type: 'upload',
                     severity: 'high',
                     field: (string) $field,
                     payload: $name,
                     detail: "Forbidden file extension: .{$ext}",
-                );
+                )];
             }
 
             if ($tmpPath && file_exists($tmpPath)) {
                 $head = file_get_contents($tmpPath, false, null, 0, 1024);
                 if ($head !== false && preg_match('/<\?(?:php|=)/i', $head)) {
-                    return new ThreatResult(
+                    return [new ThreatResult(
                         type: 'upload',
                         severity: 'critical',
                         field: (string) $field,
                         payload: $name,
                         detail: 'PHP code detected in file content',
-                    );
+                    )];
                 }
             }
         }
 
-        return null;
+        return [];
     }
 
     private function isUploadFile(mixed $value): bool

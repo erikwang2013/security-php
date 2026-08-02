@@ -19,45 +19,48 @@ class CsrfOriginDetector implements DetectorInterface
         return 'csrf_origin';
     }
 
-    public function detect(array $data): ?ThreatResult
+    public function priority(): int
     {
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        return -15;
+    }
+
+    public function detect(array $data): array
+    {
+        $origin = $data['_server.HTTP_ORIGIN'] ?? '';
         if ($origin === '') {
-            return null;
+            return [];
         }
 
-        $host = $_SERVER['HTTP_HOST'] ?? '';
+        $host = $data['_server.HTTP_HOST'] ?? '';
         if ($host === '') {
-            return null;
+            return [];
         }
 
         $originHost = parse_url($origin, PHP_URL_HOST);
         if ($originHost === false || $originHost === null) {
-            return null;
+            return [];
         }
 
-        // Check allowed origins from config
         $allowed = SecurityGuard::detectorOption('csrf_origin', 'allowed_origins', null);
         if (is_array($allowed)) {
             foreach ($allowed as $allowedOrigin) {
                 if (strtolower($originHost) === strtolower($allowedOrigin)) {
-                    return null;
+                    return [];
                 }
             }
         }
 
-        // Default: Origin must match Host
         if (strtolower($originHost) === strtolower($host)) {
-            return null;
+            return [];
         }
 
-        return new ThreatResult(
+        return [new ThreatResult(
             type: 'csrf_origin',
             severity: 'high',
             field: '_server.HTTP_ORIGIN',
             payload: $origin,
             detail: "CSRF: Origin {$origin} does not match Host {$host}",
             httpStatus: 403,
-        );
+        )];
     }
 }

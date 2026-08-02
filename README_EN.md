@@ -304,14 +304,14 @@ HTTP Request
          │
          ▼
 ┌─────────────────┐
-│  SecurityGuard   │  Facade: IP whitelist → IP blacklist check → field whitelist → nested flattening → scan
-│                 │  Post-scan: records attacking IPs into IpBlacklist
+│  SecurityGuard   │  Facade: IP whitelist → IP blacklist check → field whitelist → $_SERVER inject →
+│                 │  nested flattening → scan. Post-scan: records attacking IPs into IpBlacklist
 └────────┬────────┘
          │
     ┌────┴────┐
     ▼         ▼
 ┌────────┐ ┌──────────────┐
-│IpBlacklist│ │ DetectorChain │  Chain of Responsibility: invoke all enabled detectors, collect ThreatResult[]
+│IpBlacklist│ │ DetectorChain │  Priority-sorted execution → collect all matches (no longer first-match-only)
 │         │ └──────┬───────┘
 │  ┌────┐ │        │
 │  │Storage││        │
@@ -321,9 +321,9 @@ HTTP Request
 └──┴────┴─┘        │
                   ▼
          ┌─────────────────┐
-         │  31 Detectors    │  23 extend AbstractRegexDetector, define only name() + patterns()
+         │  31 Detectors    │  23 extend AbstractRegexDetector, define only name() + patterns() + priority()
          │  (strategy)      │  8 override detect(): Upload (file scan), JwtAttack (JWT decode),
-         │                 │  PrototypePollution (key check), HttpMethod/BodySize/ContentType/CsrfOrigin (server check)
+         │                 │  PrototypePollution (key check), HttpMethod/BodySize/ContentType/CsrfOrigin ($data-injected, decoupled from $_SERVER)
          └────────┬────────┘
                   │
                   ▼
@@ -447,11 +447,11 @@ class MyCustomDetector implements DetectorInterface
 'my_custom'   => ['enabled' => true, 'mode' => 'block'],
 ```
 
-## 开源不易，欢迎支持
+## Open Source — Your Support Is Welcome
 
-| 微信 | 支付宝 |
+| WeChat Pay | Alipay |
 |:---:|:---:|
-| ![微信](./docs/weixinpay.png "微信") | ![支付宝](./docs/alipay.png "支付宝") |
+| <img src="./docs/weixinpay.png" alt="WeChat Pay" width="130" height="130" /> | <img src="./docs/alipay.png" alt="Alipay" width="130" height="130" /> |
 
 ---
 

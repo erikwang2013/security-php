@@ -23,8 +23,8 @@ class SpecialDetectorsTest extends TestCase
         $result = $detector->detect([
             'file' => ['name' => 'shell.php', 'tmp_name' => '/tmp/phpXXX'],
         ]);
-        $this->assertNotNull($result);
-        $this->assertSame('upload', $result->type);
+        $this->assertNotEmpty($result);
+        $this->assertSame('upload', $result[0]->type);
     }
 
     public function testUploadBlocksPhpContent(): void
@@ -38,8 +38,8 @@ class SpecialDetectorsTest extends TestCase
         ]);
         unlink($tmp);
 
-        $this->assertNotNull($result);
-        $this->assertSame('critical', $result->severity);
+        $this->assertNotEmpty($result);
+        $this->assertSame('critical', $result[0]->severity);
     }
 
     public function testUploadAllowsSafeImage(): void
@@ -53,14 +53,14 @@ class SpecialDetectorsTest extends TestCase
         ]);
         unlink($tmp);
 
-        $this->assertNull($result, 'Safe jpg upload should pass');
+        $this->assertEmpty($result, 'Safe jpg upload should pass');
     }
 
     public function testUploadSkipsNonFileArrays(): void
     {
         $detector = new UploadDetector();
         $result = $detector->detect(['data' => 'just a string']);
-        $this->assertNull($result);
+        $this->assertEmpty($result);
     }
 
     // JwtAttackDetector
@@ -69,7 +69,7 @@ class SpecialDetectorsTest extends TestCase
         $detector = new JwtAttackDetector();
         // header: {"alg":"none"} → base64url: eyJhbGciOiJub25lIn0
         $result = $detector->detect(['token' => 'eyJhbGciOiJub25lIn0.eyJhZG1pbiI6dHJ1ZX0.']);
-        $this->assertNotNull($result);
+        $this->assertNotEmpty($result);
     }
 
     public function testJwtWithHmacKidPathTraversal(): void
@@ -77,14 +77,14 @@ class SpecialDetectorsTest extends TestCase
         $detector = new JwtAttackDetector();
         // header: {"alg":"HS256","kid":"../../etc/passwd"} → base64url
         $result = $detector->detect(['token' => 'eyJhbGciOiJIUzI1NiIsImtpZCI6Ii4uLy4uL2V0Yy9wYXNzd2QifQ.eyJ1c2VyIjoiYWRtaW4ifQ.sig']);
-        $this->assertNotNull($result);
+        $this->assertNotEmpty($result);
     }
 
     public function testJwtNormalTokenNotDetected(): void
     {
         $detector = new JwtAttackDetector();
         $result = $detector->detect(['token' => 'eyJhbGciOiJSUzI1NiJ9.eyJ1c2VyIjoiam9obiJ9.sig123']);
-        $this->assertNull($result, 'Normal RS256 JWT should not trigger');
+        $this->assertEmpty($result, 'Normal RS256 JWT should not trigger');
     }
 
     // DataLeakDetector
@@ -92,9 +92,9 @@ class SpecialDetectorsTest extends TestCase
     {
         $detector = new DataLeakDetector();
         $result = $detector->detect(['x' => 'AKIAIOSFODNN7EXAMPLE']);
-        $this->assertNotNull($result);
-        $this->assertStringContainsString('***', $result->payload, 'Payload should be masked');
-        $this->assertStringNotContainsString('AKIA', $result->payload, 'Real key should not appear in masked payload');
+        $this->assertNotEmpty($result);
+        $this->assertStringContainsString('***', $result[0]->payload, 'Payload should be masked');
+        $this->assertStringNotContainsString('AKIA', $result[0]->payload, 'Real key should not appear in masked payload');
     }
 
     // PrototypePollutionDetector
@@ -102,28 +102,28 @@ class SpecialDetectorsTest extends TestCase
     {
         $detector = new PrototypePollutionDetector();
         $result = $detector->detect(['__proto__' => ['isAdmin' => true]]);
-        $this->assertNotNull($result);
-        $this->assertSame('prototype_pollution', $result->type);
+        $this->assertNotEmpty($result);
+        $this->assertSame('prototype_pollution', $result[0]->type);
     }
 
     public function testProtoPollutionConstructorKey(): void
     {
         $detector = new PrototypePollutionDetector();
         $result = $detector->detect(['constructor' => ['prototype' => ['isAdmin' => true]]]);
-        $this->assertNotNull($result);
+        $this->assertNotEmpty($result);
     }
 
     public function testProtoPollutionInString(): void
     {
         $detector = new PrototypePollutionDetector();
         $result = $detector->detect(['data' => 'obj["__proto__"]["isAdmin"] = true']);
-        $this->assertNotNull($result);
+        $this->assertNotEmpty($result);
     }
 
     public function testProtoPollutionNormalKeysPass(): void
     {
         $detector = new PrototypePollutionDetector();
         $result = $detector->detect(['name' => 'John', 'proto' => 'test']);
-        $this->assertNull($result);
+        $this->assertEmpty($result);
     }
 }

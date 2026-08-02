@@ -24,10 +24,12 @@ class DetectorChain
      */
     public function scan(array $data): array
     {
+        // Sort by priority (lower runs first)
+        usort($this->detectors, fn($a, $b) => $a->priority() <=> $b->priority());
+
         $threats = [];
         foreach ($this->detectors as $detector) {
-            $result = $detector->detect($data);
-            if ($result !== null) {
+            foreach ($detector->detect($data) as $result) {
                 $threats[] = $result;
             }
         }

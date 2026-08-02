@@ -25,9 +25,34 @@ class FileStorage implements StorageInterface
 
     public function set(string $key, mixed $value): void
     {
-        $data = $this->read();
-        $data[$key] = $value;
-        $this->write($data);
+        $dir = dirname($this->path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+
+        $fp = @fopen($this->path, 'c+');
+        if ($fp === false) {
+            return;
+        }
+
+        if (flock($fp, LOCK_EX)) {
+            $raw = stream_get_contents($fp);
+            $data = json_decode($raw !== false && $raw !== '' ? $raw : '{}', true);
+            if (!is_array($data)) {
+                $data = [];
+            }
+            $data[$key] = $value;
+
+            $json = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($json !== false) {
+                ftruncate($fp, 0);
+                rewind($fp);
+                fwrite($fp, $json);
+                fflush($fp);
+            }
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
     }
 
     public function delete(string $key): void

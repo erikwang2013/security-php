@@ -17,7 +17,13 @@ interface DetectorInterface
 
     /**
      * Scan flat key=>value array for attack patterns.
-     * Returns ThreatResult if threat found, null if safe.
+     * Returns all ThreatResults found (empty array = safe).
      */
-    public function detect(array $data): ?ThreatResult;
+    public function detect(array $data): array;
+
+    /**
+     * Execution priority. Lower runs first. Default 0.
+     * Cheap checks (body_size, http_method) should have negative priorities.
+     */
+    public function priority(): int;
 }

@@ -13,6 +13,8 @@ use Erikwang2013\Security\ThreatResult;
 
 abstract class AbstractRegexDetector implements DetectorInterface
 {
+    private const MAX_SCAN_LENGTH = 65536; // 64KB
+
     abstract public function name(): string;
 
     /**
@@ -20,14 +22,19 @@ abstract class AbstractRegexDetector implements DetectorInterface
      */
     abstract protected function patterns(): array;
 
-    public function detect(array $data): ?ThreatResult
+    public function detect(array $data): array
     {
+        $threats = [];
         foreach ($data as $field => $value) {
             if (!is_string($value)) {
                 continue;
             }
+            $scanValue = strlen($value) > self::MAX_SCAN_LENGTH
+                ? substr($value, 0, self::MAX_SCAN_LENGTH)
+                : $value;
+
             foreach ($this->patterns() as $pattern => $info) {
-                $result = preg_match($pattern, $value);
+                $result = preg_match($pattern, $scanValue);
                 if ($result === false) {
                     error_log(sprintf(
                         'Security: Invalid regex pattern in detector "%s": %s',
@@ -37,7 +44,7 @@ abstract class AbstractRegexDetector implements DetectorInterface
                     continue;
                 }
                 if ($result === 1) {
-                    return new ThreatResult(
+                    $threats[] = new ThreatResult(
                         type: $this->name(),
                         severity: $info['severity'],
                         field: (string) $field,
@@ -47,7 +54,12 @@ abstract class AbstractRegexDetector implements DetectorInterface
                 }
             }
         }
-        return null;
+        return $threats;
+    }
+
+    public function priority(): int
+    {
+        return 0;
     }
 
     /**
