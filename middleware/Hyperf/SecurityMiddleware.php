@@ -16,8 +16,22 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 class SecurityMiddleware implements MiddlewareInterface
 {
+    private static bool $initialized = false;
+
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        if (!self::$initialized) {
+            self::$initialized = true;
+
+            // Hyperf config path: config/autoload/security.php
+            $publishPath = BASE_PATH . '/config/autoload/security.php';
+            if (file_exists($publishPath)) {
+                SecurityGuard::init(require $publishPath);
+            } else {
+                SecurityGuard::init(require dirname(__DIR__, 2) . '/config/security.php');
+            }
+        }
+
         $data = array_merge(
             $request->getCookieParams() ?? [],
             $request->getParsedBody() ?? [],

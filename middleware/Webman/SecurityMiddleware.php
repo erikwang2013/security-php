@@ -15,8 +15,22 @@ use Webman\Http\Response;
 
 class SecurityMiddleware implements MiddlewareInterface
 {
+    private static bool $initialized = false;
+
     public function process(Request $request, callable $next): Response
     {
+        if (!self::$initialized) {
+            self::$initialized = true;
+
+            // Webman plugin config path: config/plugin/erikwang2013/security-php/app.php
+            $publishPath = config_path() . '/plugin/erikwang2013/security-php/app.php';
+            if (file_exists($publishPath)) {
+                SecurityGuard::init(require $publishPath);
+            } else {
+                SecurityGuard::init(require dirname(__DIR__, 2) . '/config/security.php');
+            }
+        }
+
         $data = array_merge(
             $request->cookie() ?? [],
             $request->get() ?? [],

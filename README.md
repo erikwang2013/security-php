@@ -130,7 +130,13 @@ protected $middleware = [
 
 ### Webman
 
-在 `config/middleware.php` 中添加：
+手动发布配置（将默认配置复制到 Webman 插件目录）：
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/plugin/erikwang2013/security-php/app.php
+```
+
+按需修改 `config/plugin/erikwang2013/security-php/app.php`，然后在 `config/middleware.php` 中添加：
 
 ```php
 return [
@@ -140,7 +146,13 @@ return [
 
 ### ThinkPHP
 
-在 `app/middleware.php` 中添加：
+手动发布配置：
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/security.php
+```
+
+按需修改 `config/security.php`，然后在 `app/middleware.php` 中添加：
 
 ```php
 return [
@@ -150,7 +162,13 @@ return [
 
 ### Hyperf
 
-在 `config/autoload/middlewares.php` 中添加：
+手动发布配置：
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/autoload/security.php
+```
+
+按需修改 `config/autoload/security.php`，然后在 `config/autoload/middlewares.php` 中添加：
 
 ```php
 return [

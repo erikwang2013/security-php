@@ -130,7 +130,13 @@ protected $middleware = [
 
 ### Webman
 
-In `config/middleware.php`:
+Publish the config (copy defaults to the Webman plugin directory):
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/plugin/erikwang2013/security-php/app.php
+```
+
+Customize `config/plugin/erikwang2013/security-php/app.php` as needed, then register in `config/middleware.php`:
 
 ```php
 return [
@@ -140,7 +146,13 @@ return [
 
 ### ThinkPHP
 
-In `app/middleware.php`:
+Publish the config:
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/security.php
+```
+
+Customize `config/security.php` as needed, then register in `app/middleware.php`:
 
 ```php
 return [
@@ -150,7 +162,13 @@ return [
 
 ### Hyperf
 
-In `config/autoload/middlewares.php`:
+Publish the config:
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/autoload/security.php
+```
+
+Customize `config/autoload/security.php` as needed, then register in `config/autoload/middlewares.php`:
 
 ```php
 return [

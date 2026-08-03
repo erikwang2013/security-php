@@ -14,8 +14,22 @@ use Erikwang2013\Security\SecurityGuard;
 
 class SecurityMiddleware
 {
+    private static bool $initialized = false;
+
     public function handle(Request $request, callable $next): Response
     {
+        if (!self::$initialized) {
+            self::$initialized = true;
+
+            // ThinkPHP config path: config/security.php
+            $publishPath = app()->getRootPath() . 'config/security.php';
+            if (file_exists($publishPath)) {
+                SecurityGuard::init(require $publishPath);
+            } else {
+                SecurityGuard::init(require dirname(__DIR__, 2) . '/config/security.php');
+            }
+        }
+
         $data = array_merge(
             $request->cookie() ?? [],
             $request->param() ?? [],
