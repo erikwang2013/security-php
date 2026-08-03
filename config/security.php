@@ -280,7 +280,7 @@ return [
      *
      * type: 存储类型
      *   'file'  — 本地 JSON 文件（默认，零依赖）
-     *   'redis' — Redis（分布式 / 高可用场景，需 php-redis 扩展）
+     *   'redis' — Redis（分布式 / 高可用场景，需通过 redis_instance 传入 \Redis 实例）
      *   'cache' — 文件缓存（每个 key 独立文件，适合高并发读写）
      */
     'storage' => [
