@@ -10,36 +10,13 @@ namespace Erikwang2013\Security\Storage;
 
 class RedisStorage implements StorageInterface
 {
-    private \Redis $redis;
     private string $prefix;
 
-    public function __construct(array $config)
-    {
-        if (!extension_loaded('redis')) {
-            throw new \RuntimeException('Redis extension is not loaded. Install php-redis or choose a different storage type.');
-        }
-
-        $this->prefix = $config['prefix'] ?? 'security:';
-
-        $this->redis = new \Redis();
-        $host = $config['host'] ?? '127.0.0.1';
-        $port = (int) ($config['port'] ?? 6379);
-        $timeout = (float) ($config['timeout'] ?? 2.0);
-        $password = $config['password'] ?? null;
-        $database = (int) ($config['database'] ?? 0);
-
-        $connected = @$this->redis->connect($host, $port, $timeout);
-        if (!$connected) {
-            throw new \RuntimeException("Failed to connect to Redis at {$host}:{$port}");
-        }
-
-        if ($password !== null && $password !== '') {
-            $this->redis->auth($password);
-        }
-
-        if ($database !== 0) {
-            $this->redis->select($database);
-        }
+    public function __construct(
+        private \Redis $redis,
+        string $prefix = 'security:',
+    ) {
+        $this->prefix = $prefix;
     }
 
     public function get(string $key): mixed

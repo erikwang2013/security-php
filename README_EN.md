@@ -267,14 +267,11 @@ When an IP triggers `max_attempts` attack detections within `window_seconds`, it
     // File storage (default, zero dependencies)
     'file' => ['path' => ''],
 
-    // Redis storage (requires php-redis extension, for distributed setups)
+    // Redis storage (type=redis, provide pre-connected \Redis instance via redis_instance)
+    // Framework users: use your framework's Redis connection (e.g. Laravel's Redis::connection())
+    // Non-framework users: use php-redis extension — new \Redis(); $redis->connect('127.0.0.1', 6379);
     'redis' => [
-        'host'     => '127.0.0.1',
-        'port'     => 6379,
-        'timeout'  => 2.0,
-        'password' => null,
-        'database' => 0,
-        'prefix'   => 'security:',
+        'prefix' => 'security:',
     ],
 
     // Cache file storage (one file per key, better for high-concurrency)
@@ -285,7 +282,7 @@ When an IP triggers `max_attempts` attack detections within `window_seconds`, it
 ],
 ```
 
-`file` stores data in a single JSON file with `flock` atomic writes. `redis` uses the Redis extension for distributed shared storage. `cache` stores each key as an independent file, avoiding single-file write contention.
+`file` stores data in a single JSON file with `flock` atomic writes. `redis` uses an externally-provided Redis instance for distributed shared storage. `cache` stores each key as an independent file, avoiding single-file write contention.
 
 ---
 
@@ -394,7 +391,7 @@ interface StorageInterface {
 | Adapter | Backend | Use Case |
 |---|---|---|
 | `FileStorage` | Single JSON file + `flock` | Default, zero-dependency |
-| `RedisStorage` | Redis via php-redis extension | Distributed / HA deployments |
+| `RedisStorage` | Redis via externally-injected \Redis instance | Distributed / HA deployments |
 | `CacheStorage` | One serialized file per key | High-concurrency, no single-file contention |
 
 **5. Framework Adapter Strategy**

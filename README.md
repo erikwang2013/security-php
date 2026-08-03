@@ -272,14 +272,11 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
     // File 存储（默认，零依赖）
     'file' => ['path' => ''],
 
-    // Redis 存储（需 php-redis 扩展，适合分布式场景）
+    // Redis 存储（type=redis 时，需在外部创建 \Redis 实例后通过 redis_instance 传入）
+    // 框架用户请使用框架自身的 Redis 连接方式（如 Laravel 的 Redis::connection()）
+    // 非框架用户请使用 php-redis 扩展创建：new \Redis(); $redis->connect('127.0.0.1', 6379);
     'redis' => [
-        'host'     => '127.0.0.1',
-        'port'     => 6379,
-        'timeout'  => 2.0,
-        'password' => null,
-        'database' => 0,
-        'prefix'   => 'security:',
+        'prefix' => 'security:',
     ],
 
     // Cache 文件缓存（每个 key 独立文件，适合高并发读写）
@@ -290,7 +287,7 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 ],
 ```
 
-`file` 模式将数据存储在单个 JSON 文件中（flock 原子写入）。`redis` 使用 Redis 扩展实现分布式共享存储。`cache` 将每个 key 存为独立文件，避免单文件写入竞争。
+`file` 模式将数据存储在单个 JSON 文件中（flock 原子写入）。`redis` 使用外部传入的 Redis 实例实现分布式共享存储。`cache` 将每个 key 存为独立文件，避免单文件写入竞争。
 
 ---
 
@@ -401,7 +398,7 @@ interface StorageInterface {
 | 适配器 | 存储方式 | 适用场景 |
 |---|---|---|
 | `FileStorage` | 单 JSON 文件 + `flock` | 默认，零依赖 |
-| `RedisStorage` | Redis（php-redis 扩展） | 分布式 / 高可用 |
+| `RedisStorage` | Redis（外部注入 \Redis 实例） | 分布式 / 高可用 |
 | `CacheStorage` | 每 key 独立序列化文件 | 高并发，无单文件写入竞争 |
 
 **5. 框架适配策略**

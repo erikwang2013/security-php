@@ -331,10 +331,18 @@ class SecurityGuard
      */
     private static function createStorage(array $config): StorageInterface
     {
+        // Allow injecting a pre-made StorageInterface
+        if (isset($config['instance']) && $config['instance'] instanceof StorageInterface) {
+            return $config['instance'];
+        }
+
         $type = strtolower($config['type'] ?? 'file');
 
         return match ($type) {
-            'redis' => new RedisStorage($config['redis'] ?? []),
+            'redis' => new RedisStorage(
+                $config['redis_instance'] ?? new \Redis(),
+                $config['redis']['prefix'] ?? 'security:',
+            ),
             'cache' => new CacheStorage($config['cache'] ?? []),
             default => new FileStorage($config['file'] ?? []),
         };
