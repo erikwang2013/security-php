@@ -30,7 +30,9 @@ class SqlInjectionDetector extends AbstractRegexDetector
                                         => ['severity' => 'high',     'detail' => 'String-based injection'],
             '/\b(?:or|and)\s+\d+\s*>\s*\d+/i'
                                         => ['severity' => 'medium',   'detail' => 'Numeric comparison injection'],
-            '/--\s*$|--\+|#$/m'         => ['severity' => 'medium',   'detail' => 'SQL comment termination'],
+            // Comment bypass requires a SQL value context (digit/quote directly before),
+            // so plain-text "comment --" / "note #" sentences are not flagged
+            '/[\d\'"]\s*--|[\d\'"]#/i'  => ['severity' => 'medium',   'detail' => 'SQL comment termination'],
             '/\/\*!.*?\*\//i'           => ['severity' => 'medium',   'detail' => 'MySQL special comment'],
             '/\b(?:information_schema|pg_catalog|sys\.|sqlite_master)\b/i'
                                         => ['severity' => 'high',     'detail' => 'Schema enumeration'],

@@ -51,9 +51,14 @@ class SecurityMiddleware implements MiddlewareInterface
         $serverParams = $request->getServerParams();
 
         $threats = SecurityGuard::guard($data, [
-            'ip'     => $serverParams['remote_addr'] ?? '0.0.0.0',
-            'method' => $request->getMethod(),
-            'uri'    => $request->getUri()->getPath(),
+            'ip'              => $serverParams['remote_addr'] ?? '0.0.0.0',
+            'method'          => $request->getMethod(),
+            'uri'             => $request->getUri()->getPath(),
+            'content_length'  => $request->getHeaderLine('Content-Length'),
+            'content_type'    => $request->getHeaderLine('Content-Type'),
+            'origin'          => $request->getHeaderLine('Origin'),
+            'host'            => $request->getHeaderLine('Host'),
+            'x_forwarded_for' => $request->getHeaderLine('X-Forwarded-For'),
         ]);
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {

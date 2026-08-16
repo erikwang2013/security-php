@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace Erikwang2013\Security\Detector;
 
+use Erikwang2013\Security\ThreatResult;
+
 class DnsRebindingDetector extends AbstractRegexDetector
 {
     public function name(): string
@@ -38,5 +40,54 @@ class DnsRebindingDetector extends AbstractRegexDetector
             '/\r\nHost\s*:\s*[^.\r]+\.[^.\r]+\.[^.\r]+/i'
                                                 => ['severity' => 'medium',   'detail' => 'Host header short hostname (no TLD)'],
         ];
+    }
+
+    /**
+     * The real Host header arrives via _server.HTTP_HOST, not as an injected
+     * \r\nHost: line, so also check the bare value there. Anchored to that
+     * exact field: a form value like ip=127.0.0.1 must not be flagged.
+     */
+    public function detect(array $data): array
+    {
+        $results = parent::detect($data);
+        $host = $data['_server.HTTP_HOST'] ?? '';
+        if (is_string($host) && $host !== '') {
+            $severity = self::rebindingSeverity($host);
+            if ($severity !== null) {
+                $results[] = new ThreatResult(
+                    type: 'dns_rebinding',
+                    severity: $severity,
+                    field: '_server.HTTP_HOST',
+                    payload: $host,
+                    detail: 'Host header resolves to internal address (DNS rebinding)',
+                );
+            }
+        }
+        return $results;
+    }
+
+    private static function rebindingSeverity(string $host): ?string
+    {
+        $host = trim($host);
+        if ($host === '') {
+            return null;
+        }
+
+        // Strip port (IPv4 / IPv6 with brackets)
+        if (str_starts_with($host, '[')) {
+            $end = strpos($host, ']');
+            $host = $end !== false ? substr($host, 1, $end - 1) : $host;
+        } else {
+            $host = explode(':', $host)[0];
+        }
+
+        if ($host === 'localhost' || $host === '0.0.0.0' || $host === '::1') {
+            return 'critical';
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+            // Single-label hostname has no public TLD — DNS rebinding / SSRF vector
+            return strpos($host, '.') === false ? 'medium' : null;
+        }
+        return 'critical';
     }
 }

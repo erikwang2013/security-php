@@ -27,9 +27,6 @@ class XpathInjectionDetector extends AbstractRegexDetector
                                                 => ['severity' => 'high',     'detail' => 'XPATH recursive traversal with filter'],
             "/count\s*\(\s*\/\/\w+/i"   => ['severity' => 'medium',   'detail' => 'XPATH count() enumeration'],
             "/string\s*\(\s*\/\/\w+/i"  => ['severity' => 'medium',   'detail' => 'XPATH string() extraction'],
-            "/substring\s*\(/i"         => ['severity' => 'medium',   'detail' => 'XPATH substring() extraction (blind)'],
-            "/contains\s*\(/i"          => ['severity' => 'medium',   'detail' => 'XPATH contains() extraction (blind)'],
-            "/translate\s*\(/i"         => ['severity' => 'medium',   'detail' => 'XPATH translate() extraction (blind)'],
             "/\/\*\s*\[\s*'[^']*'\s*=\s*'[^']*'\s*\]/i"
                                                 => ['severity' => 'high',     'detail' => 'XPATH wildcard filter attack'],
             "/\<\!\-\-/i"               => ['severity' => 'low',      'detail' => 'XML comment in XPATH query'],

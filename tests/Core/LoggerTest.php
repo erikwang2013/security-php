@@ -141,6 +141,39 @@ class LoggerTest extends TestCase
         $this->assertStringContainsString('-', $content, 'Missing meta values should show as dash');
     }
 
+    public function testDedupSuppressesDuplicateLogs(): void
+    {
+        $logger = new Logger([
+            'enabled' => true,
+            'path' => $this->logPath,
+            'max_size' => 10,
+            'dedup_seconds' => 60,
+        ]);
+
+        $threat = new ThreatResult('xss', 'critical', 'comment', '<script>x</script>', 'Script tag');
+        $logger->log($threat, ['ip' => '1.2.3.4']);
+        $logger->log($threat, ['ip' => '1.2.3.4']);
+
+        $content = file_get_contents($this->logPath);
+        $this->assertSame(1, substr_count($content, PHP_EOL), 'Duplicate threat within dedup window should be logged once');
+    }
+
+    public function testDedupAllowsDifferentThreats(): void
+    {
+        $logger = new Logger([
+            'enabled' => true,
+            'path' => $this->logPath,
+            'max_size' => 10,
+            'dedup_seconds' => 60,
+        ]);
+
+        $logger->log(new ThreatResult('xss', 'critical', 'comment', '<script>x</script>', 'a'), ['ip' => '1.2.3.4']);
+        $logger->log(new ThreatResult('sqli', 'critical', 'id', "1' or 1=1 --+", 'b'), ['ip' => '1.2.3.4']);
+
+        $content = file_get_contents($this->logPath);
+        $this->assertSame(2, substr_count($content, PHP_EOL), 'Different threat types should both be logged');
+    }
+
     public function testTruncateLongPayloads(): void
     {
         $logger = new Logger([

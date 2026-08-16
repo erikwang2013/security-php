@@ -139,6 +139,20 @@ class SecurityGuardTest extends TestCase
         $this->assertTrue(SecurityGuard::shouldBlock($threats));
     }
 
+    public function testShouldBlockReturnsTrueForIpBlacklistThreat(): void
+    {
+        SecurityGuard::init($this->config);
+        $threat = new ThreatResult(
+            type: 'ip_blacklist',
+            severity: 'high',
+            field: '_server.REMOTE_ADDR',
+            payload: '203.0.113.5',
+            detail: 'IP temporarily banned',
+        );
+
+        $this->assertTrue(SecurityGuard::shouldBlock([$threat]), 'ip_blacklist threats should always block');
+    }
+
     public function testShouldBlockReturnsFalseForLogMode(): void
     {
         $this->config['detectors']['xss']['mode'] = 'log';

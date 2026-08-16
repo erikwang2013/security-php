@@ -25,6 +25,22 @@ class FileStorage implements StorageInterface
 
     public function set(string $key, mixed $value): void
     {
+        $this->mutate(static fn (array $data) => [$key => $value] + $data);
+    }
+
+    public function delete(string $key): void
+    {
+        $this->mutate(static function (array $data) use ($key) {
+            unset($data[$key]);
+            return $data;
+        });
+    }
+
+    /**
+     * Atomic read-modify-write under an exclusive lock.
+     */
+    private function mutate(callable $fn): void
+    {
         $dir = dirname($this->path);
         if (!is_dir($dir)) {
             @mkdir($dir, 0755, true);
@@ -41,7 +57,7 @@ class FileStorage implements StorageInterface
             if (!is_array($data)) {
                 $data = [];
             }
-            $data[$key] = $value;
+            $data = $fn($data);
 
             $json = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             if ($json !== false) {
@@ -53,13 +69,6 @@ class FileStorage implements StorageInterface
             flock($fp, LOCK_UN);
         }
         fclose($fp);
-    }
-
-    public function delete(string $key): void
-    {
-        $data = $this->read();
-        unset($data[$key]);
-        $this->write($data);
     }
 
     public function has(string $key): bool

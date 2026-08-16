@@ -45,9 +45,14 @@ if (!function_exists('security_scan_current_request')) {
         }
 
         return SecurityGuard::guard($data, [
-            'ip'     => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
-            'method' => $_SERVER['REQUEST_METHOD'] ?? 'GET',
-            'uri'    => $_SERVER['REQUEST_URI'] ?? '/',
+            'ip'              => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+            'method'          => $_SERVER['REQUEST_METHOD'] ?? 'GET',
+            'uri'             => $_SERVER['REQUEST_URI'] ?? '/',
+            'content_length'  => $_SERVER['CONTENT_LENGTH'] ?? '',
+            'content_type'    => $_SERVER['CONTENT_TYPE'] ?? '',
+            'origin'          => $_SERVER['HTTP_ORIGIN'] ?? '',
+            'host'            => $_SERVER['HTTP_HOST'] ?? '',
+            'x_forwarded_for' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '',
         ]);
     }
 }

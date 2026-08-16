@@ -38,7 +38,12 @@ class SecurityMiddleware implements MiddlewareInterface
         );
 
         foreach ($request->file() ?? [] as $key => $file) {
-            if (is_array($file) && isset($file['tmp_name'], $file['name'])) {
+            if ($file instanceof \Webman\Http\UploadFile) {
+                $data[$key] = [
+                    'name'     => $file->getUploadName() ?? '',
+                    'tmp_name' => $file->getUploadTmpPath() ?? '',
+                ];
+            } elseif (is_array($file) && isset($file['tmp_name'], $file['name'])) {
                 $data[$key] = [
                     'name'     => $file['name'],
                     'tmp_name' => $file['tmp_name'],
@@ -47,9 +52,14 @@ class SecurityMiddleware implements MiddlewareInterface
         }
 
         $threats = SecurityGuard::guard($data, [
-            'ip'     => $request->getRealIp() ?? '0.0.0.0',
-            'method' => $request->method(),
-            'uri'    => $request->path(),
+            'ip'              => $request->getRealIp() ?? '0.0.0.0',
+            'method'          => $request->method(),
+            'uri'             => $request->path(),
+            'content_length'  => $request->header('content-length') ?? '',
+            'content_type'    => $request->header('content-type') ?? '',
+            'origin'          => $request->header('origin') ?? '',
+            'host'            => $request->header('host') ?? '',
+            'x_forwarded_for' => $request->header('x-forwarded-for') ?? '',
         ]);
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {

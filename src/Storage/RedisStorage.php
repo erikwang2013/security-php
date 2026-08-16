@@ -26,7 +26,8 @@ class RedisStorage implements StorageInterface
             return null;
         }
         $decoded = json_decode($value, true);
-        return $decoded !== null ? $decoded : $value;
+        // 'null' is a valid stored JSON value; only fall back to raw when it isn't
+        return $decoded !== null || $value === 'null' ? $decoded : $value;
     }
 
     public function set(string $key, mixed $value): void

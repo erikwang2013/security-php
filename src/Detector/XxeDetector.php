@@ -27,8 +27,6 @@ class XxeDetector extends AbstractRegexDetector
                                         => ['severity' => 'critical', 'detail' => 'DOCTYPE with SYSTEM identifier'],
             '/<!DOCTYPE\s+\w+\s+PUBLIC\s+/i'
                                         => ['severity' => 'critical', 'detail' => 'DOCTYPE with PUBLIC identifier'],
-            '/xmlns:xsi\s*=\s*"http:\/\/www\.w3\.org/i'
-                                        => ['severity' => 'low',   'detail' => 'XSI namespace (XML context indicator)'],
         ];
     }
 }

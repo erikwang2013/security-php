@@ -14,7 +14,15 @@ class DetectorChain
 
     public function add(DetectorInterface $detector): self
     {
-        $this->detectors[] = $detector;
+        $priority = $detector->priority();
+        $index = count($this->detectors);
+        foreach ($this->detectors as $i => $existing) {
+            if ($existing->priority() > $priority) {
+                $index = $i;
+                break;
+            }
+        }
+        array_splice($this->detectors, $index, 0, [$detector]);
         return $this;
     }
 
@@ -24,9 +32,6 @@ class DetectorChain
      */
     public function scan(array $data): array
     {
-        // Sort by priority (lower runs first)
-        usort($this->detectors, fn($a, $b) => $a->priority() <=> $b->priority());
-
         $threats = [];
         foreach ($this->detectors as $detector) {
             foreach ($detector->detect($data) as $result) {

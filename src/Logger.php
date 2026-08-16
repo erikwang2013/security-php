@@ -47,27 +47,29 @@ class Logger
             $this->sanitize($threat->detail),
         );
 
-        $fp = fopen($this->path, 'a');
+        $fp = @fopen($this->path, 'a');
         if ($fp === false) {
             return;
         }
 
+        $shouldRotate = false;
         if (flock($fp, LOCK_EX)) {
             $stat = fstat($fp);
-            if ($stat !== false && $this->maxSize > 0 && $stat['size'] >= (int) ($this->maxSize * 1024 * 1024)) {
-                flock($fp, LOCK_UN);
-                fclose($fp);
-                rename($this->path, $this->path . '.' . date('YmdHis'));
-                $fp = fopen($this->path, 'a');
-                if ($fp === false) {
-                    return;
-                }
-                flock($fp, LOCK_EX);
-            }
-            fwrite($fp, $line . PHP_EOL);
+            $shouldRotate = $stat !== false
+                && $this->maxSize > 0
+                && $stat['size'] >= (int) ($this->maxSize * 1024 * 1024);
             flock($fp, LOCK_UN);
         }
         fclose($fp);
+
+        if ($shouldRotate) {
+            // Rename without holding the lock; a concurrent writer may reopen the old file
+            // briefly, but no data is lost — it is just written to the rotated file.
+            @rename($this->path, $this->path . '.' . date('YmdHis'));
+        }
+
+        // Atomic single-write append (O_APPEND), safe against concurrent loggers
+        @file_put_contents($this->path, $line . PHP_EOL, FILE_APPEND | LOCK_EX);
     }
 
     private function isDuplicate(ThreatResult $threat, array $meta): bool

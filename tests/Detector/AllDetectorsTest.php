@@ -254,6 +254,12 @@ class AllDetectorsTest extends TestCase
         yield 'DNS: Host 127' => [new DnsRebindingDetector(), 'x', "foo\r\nHost: 127.0.0.1"];
         yield 'DNS: Host 192.168' => [new DnsRebindingDetector(), 'x', "foo\r\nHost: 192.168.1.1"];
         yield 'DNS: Host localhost' => [new DnsRebindingDetector(), 'x', "foo\r\nHost: localhost"];
+
+        // DNS Rebinding — raw _server.HTTP_HOST values
+        yield 'DNS: HTTP_HOST raw 127' => [new DnsRebindingDetector(), '_server.HTTP_HOST', '127.0.0.1'];
+        yield 'DNS: HTTP_HOST raw 10' => [new DnsRebindingDetector(), '_server.HTTP_HOST', '10.0.0.1'];
+        yield 'DNS: HTTP_HOST raw localhost' => [new DnsRebindingDetector(), '_server.HTTP_HOST', 'localhost'];
+        yield 'DNS: HTTP_HOST raw v6' => [new DnsRebindingDetector(), '_server.HTTP_HOST', '[::1]'];
     }
 
     public static function provideSafePayloads(): iterable
@@ -269,6 +275,18 @@ class AllDetectorsTest extends TestCase
         yield 'Safe: regular json' => [new SstiDetector(), 'data', '{"name": "John", "age": 30}'];
         yield 'Safe: simple url' => [new OpenRedirectDetector(), 'url', '/dashboard'];
         yield 'Safe: relative path' => [new PathTraversalDetector(), 'path', 'images/photo.jpg'];
+        yield 'Safe: online=true' => [new XssDetector(), 'x', 'status=online=true'];
+        yield 'Safe: double pipe' => [new CommandInjectionDetector(), 'x', 'left || right'];
+        yield 'Safe: substring js' => [new XpathInjectionDetector(), 'x', 'str.substring(0,3)'];
+        yield 'Safe: __construct word' => [new DeserializationDetector(), 'x', '__construct is a magic method'];
+        yield 'Safe: comment word' => [new SqlInjectionDetector(), 'x', 'comment --'];
+        yield 'Safe: note hash' => [new SqlInjectionDetector(), 'x', 'note #'];
+        yield 'Safe: legal xml with xsi' => [
+            new XxeDetector(),
+            'x',
+            '<?xml version="1.0"?><root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><item>1</item></root>',
+        ];
+        yield 'Safe: dns host example.com' => [new DnsRebindingDetector(), '_server.HTTP_HOST', 'example.com'];
     }
 
     // ──────────────── HELPERS ────────────────
@@ -446,5 +464,15 @@ class AllDetectorsTest extends TestCase
         $detector = new CsrfOriginDetector();
         $result = $detector->detect([]);
         $this->assertEmpty($result);
+    }
+
+    public function testCsrfOriginDetectorAllowsSameOriginWithPort(): void
+    {
+        $detector = new CsrfOriginDetector();
+        $result = $detector->detect([
+            '_server.HTTP_ORIGIN' => 'https://mysite.com:8080',
+            '_server.HTTP_HOST' => 'mysite.com:8080',
+        ]);
+        $this->assertEmpty($result, 'Same origin with non-default port should NOT be flagged');
     }
 }

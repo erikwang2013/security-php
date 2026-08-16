@@ -30,7 +30,6 @@ class CommandInjectionDetector extends AbstractRegexDetector
             '/>\s*\/dev\/null/i'        => ['severity' => 'low',      'detail' => 'Output redirection to /dev/null'],
             '/\b(?:system|exec|passthru|shell_exec|popen|proc_open|pcntl_exec)\s*\(/i'
                                         => ['severity' => 'critical', 'detail' => 'PHP code execution function'],
-            '/\|\s*\|\s*/'              => ['severity' => 'medium',   'detail' => 'OR operator chain'],
             '/&&\s*(?:wget|curl|nc|bash|sh|python|perl|ruby|php)/i'
                                         => ['severity' => 'high',     'detail' => 'Chained command execution'],
             '/;\s*(?:bash|sh|python|perl|ruby|php)\b/i'

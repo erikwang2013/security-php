@@ -20,7 +20,9 @@ class XssDetector extends AbstractRegexDetector
         return [
             '/<script\b/i'              => ['severity' => 'critical', 'detail' => 'Script tag injection'],
             '/<iframe\b/i'              => ['severity' => 'high',     'detail' => 'Iframe injection'],
-            '/\bon[a-z]+\s*=/i'         => ['severity' => 'high',     'detail' => 'Event handler injection'],
+            // Explicit handler list so words like "online" or "connection" are not flagged
+            '/\bon(?:click|dblclick|contextmenu|auxclick|error|load|focus|blur|focusin|focusout|change|input|submit|reset|select|keyup|keydown|keypress|mousedown|mouseup|mousemove|mouseover|mouseout|mouseenter|mouseleave|wheel|touchstart|touchend|touchmove|touchcancel|pointerdown|pointerup|pointermove|pointerover|pointerout|pointerenter|pointerleave|drag|dragstart|dragend|dragenter|dragover|dragleave|drop|copy|cut|paste|scroll|resize|toggle|play|pause|progress)\s*=/i'
+                                        => ['severity' => 'high',     'detail' => 'Event handler injection'],
             '/<svg\b.*\bon/i'          => ['severity' => 'high',     'detail' => 'SVG with event handler'],
             '/<style\b[^>]*>/i'        => ['severity' => 'medium',   'detail' => 'CSS tag injection (XSS vector)'],
             '/style\s*=\s*"[^"]*\b(?:expression|javascript)\b/i'

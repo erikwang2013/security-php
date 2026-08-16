@@ -99,6 +99,10 @@ class SecurityGuard
         }
 
         $ip = $meta['ip'] ?? '';
+        // Resolve real client IP through trusted proxies before whitelist/blacklist checks
+        if ($ip !== '' && !empty(self::$config['trusted_proxies'] ?? [])) {
+            $ip = self::resolveClientIp($ip, $meta);
+        }
         if ($ip && self::isWhitelistedIp($ip)) {
             return [];
         }
@@ -123,12 +127,13 @@ class SecurityGuard
 
         $filtered = self::filterWhitelistFields(self::flattenData($data));
 
-        // Inject $_SERVER values so detectors don't rely on superglobals
-        $filtered['_server.REQUEST_METHOD'] = $_SERVER['REQUEST_METHOD'] ?? $meta['method'] ?? '';
-        $filtered['_server.CONTENT_LENGTH'] = $_SERVER['CONTENT_LENGTH'] ?? '';
-        $filtered['_server.CONTENT_TYPE']   = $_SERVER['CONTENT_TYPE'] ?? '';
-        $filtered['_server.HTTP_ORIGIN']    = $_SERVER['HTTP_ORIGIN'] ?? '';
-        $filtered['_server.HTTP_HOST']      = $_SERVER['HTTP_HOST'] ?? '';
+        // Inject request metadata so detectors don't rely on superglobals
+        // (CLI / Swoole / Octane environments have empty $_SERVER)
+        $filtered['_server.REQUEST_METHOD'] = $meta['method'] ?? $_SERVER['REQUEST_METHOD'] ?? '';
+        $filtered['_server.CONTENT_LENGTH'] = $meta['content_length'] ?? $_SERVER['CONTENT_LENGTH'] ?? '';
+        $filtered['_server.CONTENT_TYPE']   = $meta['content_type'] ?? $_SERVER['CONTENT_TYPE'] ?? '';
+        $filtered['_server.HTTP_ORIGIN']    = $meta['origin'] ?? $_SERVER['HTTP_ORIGIN'] ?? '';
+        $filtered['_server.HTTP_HOST']      = $meta['host'] ?? $_SERVER['HTTP_HOST'] ?? '';
 
         $oldLimit = ini_get('pcre.backtrack_limit');
         ini_set('pcre.backtrack_limit', '1000000');
@@ -162,6 +167,9 @@ class SecurityGuard
         $config = self::getConfig();
         $detectorsConfig = $config['detectors'] ?? [];
         foreach ($threats as $threat) {
+            if ($threat->type === 'ip_blacklist') {
+                return true;
+            }
             $mode = $detectorsConfig[$threat->type]['mode'] ?? 'log';
             if ($mode === 'block') {
                 return true;
@@ -201,6 +209,37 @@ class SecurityGuard
             self::init($defaultConfig);
         }
         return self::$config;
+    }
+
+    /**
+     * Resolve the real client IP when the peer is a trusted reverse proxy.
+     * No-op unless the remote address matches a configured trusted proxy.
+     */
+    private static function resolveClientIp(string $remoteAddr, array $meta): string
+    {
+        $trusted = self::$config['trusted_proxies'] ?? [];
+        $isTrusted = false;
+        foreach ($trusted as $entry) {
+            if (self::ipMatches($remoteAddr, (string) $entry)) {
+                $isTrusted = true;
+                break;
+            }
+        }
+        if (!$isTrusted) {
+            return $remoteAddr;
+        }
+
+        $xff = trim($meta['x_forwarded_for'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+        if ($xff === '') {
+            return $remoteAddr;
+        }
+
+        // Leftmost hop is the original client (standard XFF semantics)
+        $first = trim(explode(',', $xff)[0]);
+        if (str_starts_with($first, 'for=')) {
+            $first = trim(substr($first, 4), " \t\"");
+        }
+        return filter_var($first, FILTER_VALIDATE_IP) !== false ? $first : $remoteAddr;
     }
 
     private static function isWhitelistedIp(string $ip): bool
