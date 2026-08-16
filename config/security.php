@@ -151,9 +151,10 @@ return [
 
         // GraphQL 注入检测
         // 检测 __schema/__type 内省查询、深度嵌套、批量查询攻击
+        // 注意：默认 log 模式，因为深度嵌套模式可能匹配合法前端 JSON/JS 大括号结构
         'graphql_injection' => [
             'enabled' => true,
-            'mode'    => 'block',
+            'mode'    => 'log',
         ],
 
         // XPATH 注入检测
@@ -200,9 +201,10 @@ return [
 
         // WebSocket 劫持检测
         // 检测 Upgrade:websocket 头注入、null Origin 绕过、WS URL 注入
+        // 注意：默认 log 模式，因为 Upgrade 头检测可能匹配合法 WebSocket 建连请求
         'websocket' => [
             'enabled' => true,
-            'mode'    => 'block',
+            'mode'    => 'log',
         ],
 
         // CORS 绕过检测

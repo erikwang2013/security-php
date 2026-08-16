@@ -18,7 +18,7 @@ class SsrfDetector extends AbstractRegexDetector
     protected function patterns(): array
     {
         return [
-            '/https?:\/\/127\.\d+\.\d+\.\d+/i'
+            '/https?:\/\/127(?:\.\d{1,3}){1,3}/i'
                                         => ['severity' => 'critical', 'detail' => 'Loopback address SSRF'],
             '/https?:\/\/localhost\b/i' => ['severity' => 'critical', 'detail' => 'Localhost SSRF'],
             '/https?:\/\/10\.\d+\.\d+\.\d+/i'
@@ -35,6 +35,10 @@ class SsrfDetector extends AbstractRegexDetector
                                         => ['severity' => 'high',     'detail' => 'IPv4-mapped IPv6 loopback SSRF'],
             '/(?:gopher|dict|file):\/\//i'
                                         => ['severity' => 'high',     'detail' => 'Dangerous URI scheme for SSRF'],
+            '/https?:\/\/2130706433\b/i'
+                                        => ['severity' => 'critical', 'detail' => 'Decimal integer loopback SSRF'],
+            '/https?:\/\/0x7f000001\b/i'
+                                        => ['severity' => 'critical', 'detail' => 'Hex integer loopback SSRF'],
         ];
     }
 }

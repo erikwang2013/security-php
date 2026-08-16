@@ -64,7 +64,7 @@ class SecurityMiddleware implements MiddlewareInterface
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
             return new Response(
-                SecurityGuard::blockStatusCode(),
+                SecurityGuard::blockStatusCode($threats),
                 ['Content-Type' => 'text/plain; charset=utf-8'],
                 SecurityGuard::blockMessage()
             );

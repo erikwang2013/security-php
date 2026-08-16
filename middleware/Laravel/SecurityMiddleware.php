@@ -36,7 +36,7 @@ class SecurityMiddleware
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
             return response(
                 SecurityGuard::blockMessage(),
-                SecurityGuard::blockStatusCode(),
+                SecurityGuard::blockStatusCode($threats),
                 ['Content-Type' => 'text/plain; charset=utf-8']
             );
         }

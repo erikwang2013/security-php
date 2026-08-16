@@ -144,6 +144,9 @@ class AllDetectorsTest extends TestCase
         yield 'SSRF: 192.168' => [new SsrfDetector(), 'x', 'http://192.168.1.1/secret'];
         yield 'SSRF: 10.x' => [new SsrfDetector(), 'x', 'http://10.0.0.1/internal'];
         yield 'SSRF: gopher' => [new SsrfDetector(), 'x', 'gopher://127.0.0.1:6379/_*1'];
+        yield 'SSRF: 127.1 short form' => [new SsrfDetector(), 'x', 'http://127.1/admin'];
+        yield 'SSRF: decimal integer' => [new SsrfDetector(), 'x', 'http://2130706433/x'];
+        yield 'SSRF: hex integer' => [new SsrfDetector(), 'x', 'http://0x7f000001/x'];
 
         // XXE (3 vectors)
         yield 'XXE: ENTITY SYSTEM' => [new XxeDetector(), 'x', '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'];
@@ -207,6 +210,7 @@ class AllDetectorsTest extends TestCase
 
         // GraphQL (3 vectors)
         yield 'GQL: __schema' => [new GraphqlInjectionDetector(), 'x', '{__schema{types{name}}}'];
+        yield 'GQL: __schema spaced' => [new GraphqlInjectionDetector(), 'x', '{ __schema { types { name } } }'];
         yield 'GQL: __type' => [new GraphqlInjectionDetector(), 'x', '{__type(name:"User"){fields{name}}}'];
         yield 'GQL: deep nest' => [new GraphqlInjectionDetector(), 'x', '{a{b{c{d{e{f{g{h{id}}}}}}}}}'];
 
@@ -271,6 +275,9 @@ class AllDetectorsTest extends TestCase
         yield 'Safe: description' => [new CommandInjectionDetector(), 'desc', 'The quick brown fox jumps over the lazy dog'];
         yield 'Safe: number' => [new PathTraversalDetector(), 'id', '42'];
         yield 'Safe: uuid' => [new SsrfDetector(), 'uuid', '550e8400-e29b-41d4-a716-446655440000'];
+        yield 'Safe: ip-like number in path' => [new SsrfDetector(), 'url', 'http://example.com/2130706433'];
+        yield 'Safe: __typename field' => [new GraphqlInjectionDetector(), 'q', 'query { user { __typename } }'];
+        yield 'Safe: normal graphql query' => [new GraphqlInjectionDetector(), 'q', 'query Me { me { posts { title } } }'];
         yield 'Safe: base64 allowed' => [new DataLeakDetector(), 'token', 'dGhpc2lzYXRva2Vu']; // "thisisatoken" in base64
         yield 'Safe: regular json' => [new SstiDetector(), 'data', '{"name": "John", "age": 30}'];
         yield 'Safe: simple url' => [new OpenRedirectDetector(), 'url', '/dashboard'];

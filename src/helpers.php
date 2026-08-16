@@ -77,7 +77,7 @@ if (!function_exists('security_guard')) {
         $threats = security_scan_current_request();
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
-            http_response_code(SecurityGuard::blockStatusCode());
+            http_response_code(SecurityGuard::blockStatusCode($threats));
             header('Content-Type: text/plain; charset=utf-8');
             die(SecurityGuard::blockMessage());
         }

@@ -62,7 +62,7 @@ class SecurityMiddleware
             return Response::create(
                 SecurityGuard::blockMessage(),
                 'text/plain; charset=utf-8',
-                SecurityGuard::blockStatusCode()
+                SecurityGuard::blockStatusCode($threats)
             );
         }
 

@@ -41,19 +41,8 @@ class UploadDetector implements DetectorInterface
             $name = $file['name'] ?? 'unknown';
             $tmpPath = $file['tmp_name'] ?? null;
 
-            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-            if ($ext !== '' && !in_array($ext, self::SAFE_EXTENSIONS, true)) {
-                return [new ThreatResult(
-                    type: 'upload',
-                    severity: 'high',
-                    field: (string) $field,
-                    payload: $name,
-                    detail: "Forbidden file extension: .{$ext}",
-                )];
-            }
-
             if ($tmpPath && file_exists($tmpPath)) {
-                $head = file_get_contents($tmpPath, false, null, 0, 1024);
+                $head = file_get_contents($tmpPath, false, null, 0, 1048576);
                 if ($head !== false && preg_match('/<\?(?:php|=)/i', $head)) {
                     return [new ThreatResult(
                         type: 'upload',
@@ -61,6 +50,21 @@ class UploadDetector implements DetectorInterface
                         field: (string) $field,
                         payload: $name,
                         detail: 'PHP code detected in file content',
+                    )];
+                }
+            }
+
+            // Each dotted segment must be whitelisted (blocks x.php.jpg double-extension bypass)
+            $parts = explode('.', strtolower($name));
+            array_shift($parts);
+            foreach ($parts as $seg) {
+                if ($seg !== '' && !in_array($seg, self::SAFE_EXTENSIONS, true)) {
+                    return [new ThreatResult(
+                        type: 'upload',
+                        severity: 'high',
+                        field: (string) $field,
+                        payload: $name,
+                        detail: "Forbidden file extension: .{$seg}",
                     )];
                 }
             }

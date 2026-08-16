@@ -62,7 +62,7 @@ class SecurityMiddleware implements MiddlewareInterface
         ]);
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
-            $statusCode = SecurityGuard::blockStatusCode();
+            $statusCode = SecurityGuard::blockStatusCode($threats);
             $message = SecurityGuard::blockMessage();
 
             $response = new \Hyperf\HttpMessage\Server\Response();

@@ -63,6 +63,38 @@ class SpecialDetectorsTest extends TestCase
         $this->assertEmpty($result);
     }
 
+    public function testUploadBlocksPhpTagPastFirstKBInDisguisedName(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'test_');
+        $fh = fopen($tmp, 'wb');
+        fwrite($fh, str_repeat('A', 2048)); // PHP tag starts at byte 2048, beyond the old 1024-byte check
+        fwrite($fh, '<?php system($_GET["cmd"]); ?>');
+        fclose($fh);
+
+        $detector = new UploadDetector();
+        $result = $detector->detect([
+            'file' => ['name' => 'x.php.jpg', 'tmp_name' => $tmp],
+        ]);
+        unlink($tmp);
+
+        $this->assertNotEmpty($result, 'PHP tag at byte 2048 in x.php.jpg should be detected');
+        $this->assertSame('critical', $result[0]->severity);
+    }
+
+    public function testUploadAllowsSafeTarGz(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'test_');
+        file_put_contents($tmp, str_repeat('B', 4096));
+
+        $detector = new UploadDetector();
+        $result = $detector->detect([
+            'file' => ['name' => 'x.tar.gz', 'tmp_name' => $tmp],
+        ]);
+        unlink($tmp);
+
+        $this->assertEmpty($result, 'Safe tar.gz upload should pass');
+    }
+
     // JwtAttackDetector
     public function testJwtAlgNoneDetected(): void
     {

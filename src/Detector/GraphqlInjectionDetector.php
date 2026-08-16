@@ -20,8 +20,7 @@ class GraphqlInjectionDetector extends AbstractRegexDetector
         return [
             '/\b__schema\b/'            => ['severity' => 'high',     'detail' => 'GraphQL schema introspection'],
             '/\b__type\b/'              => ['severity' => 'high',     'detail' => 'GraphQL type introspection'],
-            '/\b__typename\b/'          => ['severity' => 'low',      'detail' => 'GraphQL __typename field access'],
-            '/\{\s*\w+\s*\{[^}]*\{/'   => ['severity' => 'medium',   'detail' => 'Deeply nested GraphQL query'],
+            '/\{\s*\w+\s*\{[^}]*\{[^}]*\{[^}]*\{/'   => ['severity' => 'medium',   'detail' => 'Deeply nested GraphQL query'],
             '/fragment\s+\w+\s+on\s+\w+/i'
                                                 => ['severity' => 'medium',   'detail' => 'GraphQL fragment usage'],
             '/query\s+\w+\s*\{[^}]*\{[^}]*\{[^}]*\{[^}]*\{/i'
