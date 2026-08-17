@@ -23,7 +23,7 @@ class DeserializationDetector extends AbstractRegexDetector
             '/a:\d+:\{/'               => ['severity' => 'high',     'detail' => 'Serialized array structure'],
             '/s:\d+:"[^"]*"/'          => ['severity' => 'medium',   'detail' => 'Serialized string structure'],
             '/O:\d+:"[^"]+":\d+:\{/'   => ['severity' => 'critical', 'detail' => 'Complete serialized object'],
-            '/__wakeup|__destruct|__toString/'
+            '/__(?:wakeup|destruct|toString)(?!\s*$)/i'
                                         => ['severity' => 'high',     'detail' => 'PHP magic method reference'],
             '/Spl(?:ObjectStorage|Queue|Stack|Heap)/'
                                         => ['severity' => 'medium',   'detail' => 'SPL object in serialized data'],

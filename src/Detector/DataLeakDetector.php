@@ -42,8 +42,50 @@ class DataLeakDetector extends AbstractRegexDetector
             '/\bjwt[_-]?secret\s*[:=]\s*["\']?[A-Za-z0-9._\-]{8,}/i'
                                                 => ['severity' => 'critical', 'detail' => 'JWT secret key exposed'],
             // Password in URL
-            '/\bpassword=([^&\s]+)/i'   => ['severity' => 'high',  'detail' => 'Password in URL query string'],
+            '/[?&]\bpassword=[^&\s]+/i' => ['severity' => 'high',  'detail' => 'Password in URL query string'],
         ];
+    }
+
+    public function detect(array $data): array
+    {
+        $kept = [];
+        foreach (parent::detect($data) as $threat) {
+            // Credit-card lookalikes must pass Luhn on the original value
+            if ($threat->detail === 'Credit card number pattern detected') {
+                $raw = $data[$threat->field] ?? '';
+                if (!is_string($raw) || !$this->hasValidLuhn($raw)) {
+                    continue;
+                }
+            }
+            $kept[] = $threat;
+        }
+        return $kept;
+    }
+
+    private function hasValidLuhn(string $raw): bool
+    {
+        preg_match_all('/\b(?:\d[ -]?){13,16}\b/', $raw, $matches);
+        foreach ($matches[0] as $candidate) {
+            $digits = preg_replace('/\D/', '', $candidate);
+            if (strlen($digits) < 13) {
+                continue;
+            }
+            $sum = 0;
+            for ($i = strlen($digits) - 1, $j = 0; $i >= 0; $i--, $j++) {
+                $d = (int) $digits[$i];
+                if ($j % 2 === 1) {
+                    $d *= 2;
+                    if ($d > 9) {
+                        $d -= 9;
+                    }
+                }
+                $sum += $d;
+            }
+            if ($sum % 10 === 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     protected function transformPayload(string $payload): string

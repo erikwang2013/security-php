@@ -29,8 +29,6 @@ class JndiInjectionDetector extends AbstractRegexDetector
             '/\$\{(?:date|ctx|main|marker|log4j|spring|sd):/i'
                                                 => ['severity' => 'medium',   'detail' => 'Log4j lookup pattern'],
             '/\$\{[^}]*:\/\/[^}]*\}/'  => ['severity' => 'critical', 'detail' => 'JNDI remote resource lookup'],
-            '/ldaps?:\/\/[^\/]+\./'    => ['severity' => 'high',     'detail' => 'Raw LDAP URL (JNDI indicator)'],
-            '/rmi:\/\/[^\/]+\./i'      => ['severity' => 'high',     'detail' => 'Raw RMI URL (JNDI indicator)'],
         ];
     }
 }

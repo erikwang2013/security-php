@@ -30,7 +30,7 @@ class WebSocketDetector extends AbstractRegexDetector
                                                 => ['severity' => 'medium',   'detail' => 'WebSocket version header injection'],
             '/\r\nOrigin\s*:\s*null\s*\r/i'
                                                 => ['severity' => 'high',     'detail' => 'WebSocket null-origin bypass'],
-            '/\r\nOrigin\s*:\s*(?![\w.-]+\.[a-z]{2,})[^\r]*\r/i'
+            '/\r\nOrigin\s*:\s*+(?![\w.-]+\.[a-z]{2,}\s*\r|https?:\/\/[\w.-]+\.[a-z]{2,}\s*\r|wss?:\/\/[\w.-]+\.[a-z]{2,}\s*\r)[^\r]*\r/i'
                                                 => ['severity' => 'medium',   'detail' => 'WebSocket suspicious origin'],
             '/ws:\/\/[^\/]+\.[a-z]{2,}/i'
                                                 => ['severity' => 'medium',   'detail' => 'Raw WebSocket URL in input'],

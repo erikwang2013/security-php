@@ -18,13 +18,17 @@ class CommandInjectionDetector extends AbstractRegexDetector
     protected function patterns(): array
     {
         return [
-            '/`[^`]+`/'                 => ['severity' => 'critical', 'detail' => 'Backtick command substitution'],
-            '/\$\([^)]+\)/'             => ['severity' => 'critical', 'detail' => 'Dollar-parenthesis command substitution'],
+            '/`[^`]*(?:\b(?:wget|curl|nc|ncat|bash|sh|python|perl|ruby|php|node|exec)\b|[|;&]|\/dev\/(?:tcp|udp)|rm\s+-)[^`]*`/i'
+                                        => ['severity' => 'critical', 'detail' => 'Backtick command substitution'],
+            '/`[^`]+`/'                 => ['severity' => 'low',      'detail' => 'Backtick command substitution'],
+            '/\$\([^)]*(?:\b(?:wget|curl|nc|ncat|bash|sh|python|perl|ruby|php|node|exec)\b|[|;&]|\/dev\/(?:tcp|udp)|rm\s+-)[^)]*\)/i'
+                                        => ['severity' => 'critical', 'detail' => 'Dollar-parenthesis command substitution'],
+            '/\$\([^)]+\)/'             => ['severity' => 'low',      'detail' => 'Dollar-parenthesis command substitution'],
             '/;\s*(?:wget|curl|fetch|lynx)\b/i'
                                         => ['severity' => 'high',     'detail' => 'Download command after semicolon'],
             '/\|\s*(?:nc|netcat|ncat)\b/i'
                                         => ['severity' => 'high',     'detail' => 'Netcat pipe injection'],
-            '/\b(?:wget|curl)\s+http/i' => ['severity' => 'high',     'detail' => 'Remote resource download'],
+            '/\b(?:wget|curl)\s+http/i' => ['severity' => 'low',      'detail' => 'Remote resource download'],
             '/\/dev\/tcp\//i'           => ['severity' => 'critical', 'detail' => 'Bash TCP reverse shell device'],
             '/\/dev\/udp\//i'           => ['severity' => 'critical', 'detail' => 'Bash UDP reverse shell device'],
             '/>\s*\/dev\/null/i'        => ['severity' => 'low',      'detail' => 'Output redirection to /dev/null'],

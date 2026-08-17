@@ -121,6 +121,9 @@ class AllDetectorsTest extends TestCase
         yield 'SQLi: xp_cmdshell' => [new SqlInjectionDetector(), 'x', "1'; exec xp_cmdshell 'dir'--"];
         yield 'SQLi: waitfor' => [new SqlInjectionDetector(), 'x', "1'; waitfor delay '0:0:5'--"];
         yield 'SQLi: pg_sleep' => [new SqlInjectionDetector(), 'x', "1'; SELECT pg_sleep(5)--"];
+        yield 'SQLi: compact or' => [new SqlInjectionDetector(), 'x', "1'or'1'='1"];
+        yield 'SQLi: no-space or' => [new SqlInjectionDetector(), 'x', '1or1=1'];
+        yield 'SQLi: obfuscated union' => [new SqlInjectionDetector(), 'x', 'un/**/ion sel/**/ect'];
 
         // Command Injection (6 vectors)
         yield 'CMDi: backtick' => [new CommandInjectionDetector(), 'x', '`id`'];
@@ -147,6 +150,10 @@ class AllDetectorsTest extends TestCase
         yield 'SSRF: 127.1 short form' => [new SsrfDetector(), 'x', 'http://127.1/admin'];
         yield 'SSRF: decimal integer' => [new SsrfDetector(), 'x', 'http://2130706433/x'];
         yield 'SSRF: hex integer' => [new SsrfDetector(), 'x', 'http://0x7f000001/x'];
+        yield 'SSRF: octal dotted' => [new SsrfDetector(), 'x', 'http://0177.0.0.1/admin'];
+        yield 'SSRF: hex dotted' => [new SsrfDetector(), 'x', 'http://0x7f.0.0.1/admin'];
+        yield 'SSRF: zero host' => [new SsrfDetector(), 'x', 'http://0'];
+        yield 'SSRF: ipv6 hex mapped' => [new SsrfDetector(), 'x', 'http://[::ffff:7f00:1]/'];
 
         // XXE (3 vectors)
         yield 'XXE: ENTITY SYSTEM' => [new XxeDetector(), 'x', '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'];
@@ -192,6 +199,8 @@ class AllDetectorsTest extends TestCase
         yield 'Redirect: //' => [new OpenRedirectDetector(), 'x', '//evil.com/phishing'];
         yield 'Redirect: javascript:' => [new OpenRedirectDetector(), 'x', 'javascript:alert(document.cookie)'];
         yield 'Redirect: data:' => [new OpenRedirectDetector(), 'x', 'data:text/html,<script>alert(1)</script>'];
+        yield 'Redirect: backslash' => [new OpenRedirectDetector(), 'x', '\evil.com'];
+        yield 'Redirect: encoded slashes' => [new OpenRedirectDetector(), 'x', '%2f%2fevil.com'];
 
         // JWT (3 vectors)
         yield 'JWT: alg none' => [new JwtAttackDetector(), 'x', 'eyJhbGciOiJub25lIn0.eyJhZG1pbiI6dHJ1ZX0.'];
@@ -278,6 +287,23 @@ class AllDetectorsTest extends TestCase
         yield 'Safe: ip-like number in path' => [new SsrfDetector(), 'url', 'http://example.com/2130706433'];
         yield 'Safe: __typename field' => [new GraphqlInjectionDetector(), 'q', 'query { user { __typename } }'];
         yield 'Safe: normal graphql query' => [new GraphqlInjectionDetector(), 'q', 'query Me { me { posts { title } } }'];
+        yield 'Safe: bare TE header' => [new HeaderInjectionDetector(), 'x', 'Transfer-Encoding: chunked'];
+        yield 'Safe: bare CL header' => [new HeaderInjectionDetector(), 'x', 'Content-Length: 0'];
+        yield 'Safe: range 5--10' => [new SqlInjectionDetector(), 'x', '5--10'];
+        yield 'Safe: range 2023--2024' => [new SqlInjectionDetector(), 'x', '2023--2024'];
+        yield 'Safe: /etc/hosts text' => [new PathTraversalDetector(), 'x', '/etc/hosts'];
+        yield 'Safe: javascript prose' => [new OpenRedirectDetector(), 'x', 'JavaScript: The Good Parts'];
+        yield 'Safe: template variable' => [new SstiDetector(), 'x', '${user.name}'];
+        yield 'Safe: ldap scheme url' => [new JndiInjectionDetector(), 'x', 'ldap://dc.example.com/'];
+        yield 'Safe: sleep call' => [new SqlInjectionDetector(), 'x', 'sleep(5);'];
+        yield 'Safe: sleep call nosql' => [new NosqlInjectionDetector(), 'x', 'sleep(5);'];
+        yield 'Safe: important css' => [new LdapInjectionDetector(), 'x', '(!important)'];
+        yield 'Safe: uid number' => [new LdapInjectionDetector(), 'x', '(uid=1000)'];
+        yield 'Safe: order number' => [new DataLeakDetector(), 'x', '4000-1234-5678-9012'];
+        yield 'Safe: short password' => [new DataLeakDetector(), 'x', 'password=123456'];
+        yield 'Safe: toString assignment' => [new PrototypePollutionDetector(), 'x', 'obj.toString='];
+        yield 'Safe: __toString prose' => [new DeserializationDetector(), 'x', '__toString'];
+        yield 'Safe: simple sum' => [new CsvInjectionDetector(), 'x', '12+34'];
         yield 'Safe: base64 allowed' => [new DataLeakDetector(), 'token', 'dGhpc2lzYXRva2Vu']; // "thisisatoken" in base64
         yield 'Safe: regular json' => [new SstiDetector(), 'data', '{"name": "John", "age": 30}'];
         yield 'Safe: simple url' => [new OpenRedirectDetector(), 'url', '/dashboard'];

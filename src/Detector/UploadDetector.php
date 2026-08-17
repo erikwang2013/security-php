@@ -33,11 +33,7 @@ class UploadDetector implements DetectorInterface
 
     public function detect(array $data): array
     {
-        foreach ($data as $field => $file) {
-            if (!$this->isUploadFile($file)) {
-                continue;
-            }
-
+        foreach ($this->normalizeFiles($data) as $field => $file) {
             $name = $file['name'] ?? 'unknown';
             $tmpPath = $file['tmp_name'] ?? null;
 
@@ -73,11 +69,41 @@ class UploadDetector implements DetectorInterface
         return [];
     }
 
-    private function isUploadFile(mixed $value): bool
+    /**
+     * Flatten PHP $_FILES-style arrays into [field => upload-entry] pairs.
+     * Multi-file input (name/tmp_name as arrays) expands to "field[i]";
+     * deeper nesting recurses with the same bracket-key scheme.
+     */
+    private function normalizeFiles(array $data): array
     {
-        return is_array($value)
-            && isset($value['tmp_name'], $value['name'])
-            && is_string($value['tmp_name'])
-            && $value['tmp_name'] !== '';
+        $flat = [];
+        foreach ($data as $key => $value) {
+            if (is_array($value['name'] ?? null) || is_array($value['tmp_name'] ?? null)) {
+                $names = (array) ($value['name'] ?? []);
+                foreach ($names as $i => $name) {
+                    $tmpName = $value['tmp_name'][$i] ?? '';
+                    $sub = [
+                        'name' => $name,
+                        'tmp_name' => $tmpName,
+                        'type' => $value['type'][$i] ?? '',
+                        'size' => $value['size'][$i] ?? 0,
+                        'error' => $value['error'][$i] ?? 0,
+                    ];
+                    if (is_array($name) || is_array($tmpName)) {
+                        $flat += $this->normalizeFiles(["{$key}[{$i}]" => $sub]);
+                    } elseif ($tmpName !== '') {
+                        $flat["{$key}[{$i}]"] = $sub;
+                    }
+                }
+            } elseif (is_array($value)
+                && isset($value['name'], $value['tmp_name'])
+                && is_string($value['tmp_name'])
+                && $value['tmp_name'] !== ''
+            ) {
+                $flat[$key] = $value;
+            }
+        }
+
+        return $flat;
     }
 }

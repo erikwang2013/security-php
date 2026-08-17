@@ -29,7 +29,7 @@ class SsrfDetector extends AbstractRegexDetector
                                         => ['severity' => 'critical', 'detail' => 'Private network SSRF (192.168.x)'],
             '/https?:\/\/169\.254\.169\.254/i'
                                         => ['severity' => 'critical', 'detail' => 'Cloud metadata endpoint SSRF'],
-            '/https?:\/\/0\.0\.0\.0/i'  => ['severity' => 'high',     'detail' => 'All-interfaces SSRF'],
+            '/https?:\/\/0\b/i'         => ['severity' => 'high',     'detail' => 'Zero host (0.x/loopback) SSRF'],
             '/https?:\/\/\[::1\]/i'     => ['severity' => 'high',     'detail' => 'IPv6 loopback SSRF'],
             '/\/\/\[::ffff:127\.\d+\.\d+\.\d+\]/i'
                                         => ['severity' => 'high',     'detail' => 'IPv4-mapped IPv6 loopback SSRF'],
@@ -39,6 +39,11 @@ class SsrfDetector extends AbstractRegexDetector
                                         => ['severity' => 'critical', 'detail' => 'Decimal integer loopback SSRF'],
             '/https?:\/\/0x7f000001\b/i'
                                         => ['severity' => 'critical', 'detail' => 'Hex integer loopback SSRF'],
+            '/https?:\/\/0[0-7]{1,3}\./i'
+                                        => ['severity' => 'critical', 'detail' => 'Octal dotted loopback SSRF'],
+            '/https?:\/\/0x7f(?:\.\d{1,3}){0,3}\b/i'
+                                        => ['severity' => 'critical', 'detail' => 'Hex dotted loopback SSRF'],
+            '/\[::ffff:7f00:1\]/i'      => ['severity' => 'high',     'detail' => 'IPv6 hex-mapped loopback SSRF'],
         ];
     }
 }

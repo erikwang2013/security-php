@@ -289,6 +289,8 @@ return [
         'type' => 'file',
 
         // File 存储配置（type=file 时生效）
+        // 注意：多应用共享主机时，留空默认路径 sys_get_temp_dir() 会被多个应用共用，
+        // 可能互相覆盖数据。建议显式配置独立路径，或改用 type=redis。
         'file' => [
             'path' => '', // 留空使用 sys_get_temp_dir() . '/security_storage.json'
         ],
@@ -301,6 +303,8 @@ return [
         ],
 
         // Cache 存储配置（type=cache 时生效）
+        // 注意：多应用共享主机时，留空默认路径 sys_get_temp_dir() 会被多个应用共用，
+        // 可能互相覆盖数据。建议显式配置独立路径，或改用 type=redis。
         'cache' => [
             'path'   => '', // 留空使用 sys_get_temp_dir() . '/security_cache'
             'prefix' => 'security_',
@@ -324,6 +328,7 @@ return [
      * channel: 日志通道
      *   'file' — 写入文件（推荐）
      * path: 日志文件路径，留空则使用 sys_get_temp_dir() . '/security.log'
+     *   注意：多应用共享主机时，留空默认路径会被多个应用共用同一日志文件，建议显式配置独立路径
      * max_size: 单个日志文件最大体积，单位 MB，超过后自动轮转。设为 0 禁用轮转
      * dedup_seconds: 去重窗口（秒）。同一请求内，相同 IP+类型+字段在此时间内不重复记录。设为 0 禁用
      *   注意：在 PHP-FPM 等短生命周期模式下，去重仅对单次请求有效，非跨请求去重

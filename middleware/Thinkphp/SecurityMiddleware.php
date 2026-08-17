@@ -56,6 +56,7 @@ class SecurityMiddleware
             'origin'          => $request->header('origin', ''),
             'host'            => $request->header('host', ''),
             'x_forwarded_for' => $request->header('x-forwarded-for', ''),
+            'transfer_encoding' => $request->header('transfer-encoding', ''),
         ]);
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {

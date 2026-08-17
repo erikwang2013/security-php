@@ -31,7 +31,7 @@ class NosqlInjectionDetector extends AbstractRegexDetector
             '/\$inc\s*:/i'              => ['severity' => 'medium',   'detail' => 'MongoDB $inc modifier injection'],
             '/\$push\s*:/i'             => ['severity' => 'medium',   'detail' => 'MongoDB $push array injection'],
             '/\$pull\s*:/i'             => ['severity' => 'medium',   'detail' => 'MongoDB $pull operator injection'],
-            '/sleep\s*\(\s*\d+\s*\)\s*;/i'
+            '/(?:[$:])\s*[\'"]?\s*sleep\s*\(\s*\d+\s*\)\s*;?/i'
                                                 => ['severity' => 'high',     'detail' => 'MongoDB sleep() injection (NoSQL)'],
         ];
     }

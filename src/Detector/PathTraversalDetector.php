@@ -22,8 +22,10 @@ class PathTraversalDetector extends AbstractRegexDetector
             '/\.\.\\\\/'                => ['severity' => 'high',     'detail' => 'Directory traversal ..\\'],
             '/%2e%2e%2f/i'             => ['severity' => 'high',     'detail' => 'URL-encoded traversal %2e%2e%2f'],
             '/%2e%2e%5c/i'             => ['severity' => 'high',     'detail' => 'URL-encoded traversal %2e%2e%5c'],
-            '/\/etc\/(?:passwd|shadow|hosts|group)\b/i'
+            '/\/etc\/(?:passwd|shadow)\b/i'
                                         => ['severity' => 'critical', 'detail' => 'Linux system file access'],
+            '/(?:\.\.\/|\.\.\\\\|(?:file_get_contents|fopen|include|require|readfile)\s*\()[^\n]{0,200}\/etc\/(?:passwd|shadow|hosts|group)\b/i'
+                                        => ['severity' => 'critical', 'detail' => 'System file access via traversal/read'],
             '/C:\\\\Windows\\\\(?:System32|win\.ini)\b/i'
                                         => ['severity' => 'critical', 'detail' => 'Windows system file access'],
             '/php:\/\/filter/i'         => ['severity' => 'critical', 'detail' => 'PHP filter wrapper'],

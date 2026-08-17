@@ -25,9 +25,9 @@ class HeaderInjectionDetector extends AbstractRegexDetector
             '/%0[aA]/'                  => ['severity' => 'high',     'detail' => 'URL-encoded line feed'],
             '/Set-Cookie\s*:\s*[^\r\n]+/i'
                                         => ['severity' => 'critical', 'detail' => 'Cookie injection via header'],
-            '/Content-Length\s*:\s*\d+/i'
+            '/\r\nContent-Length\s*:\s*\d+/i'
                                         => ['severity' => 'high',     'detail' => 'Content-Length header injection'],
-            '/Transfer-Encoding\s*:\s*[^\r\n]+/i'
+            '/\r\nTransfer-Encoding\s*:\s*[^\r\n]+/i'
                                         => ['severity' => 'high',     'detail' => 'Transfer-Encoding header injection'],
             '/Location\s*:\s*https?:\/\//i'
                                         => ['severity' => 'high',     'detail' => 'Open redirect via header injection'],

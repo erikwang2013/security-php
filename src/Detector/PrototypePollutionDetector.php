@@ -31,7 +31,7 @@ class PrototypePollutionDetector extends AbstractRegexDetector
             '/\.?__lookupSetter__\.?/'  => ['severity' => 'medium',   'detail' => 'Prototype pollution: __lookupSetter__'],
             '/Object\.(?:define|create|setPrototypeOf)/'
                                                 => ['severity' => 'medium',   'detail' => 'Prototype pollution: Object static method use'],
-            '/\.toString\s*=|\.valueOf\s*=/'
+            '/\.(?:toString|valueOf)\s*=\s*(?:function\b|\()/i'
                                                 => ['severity' => 'high',     'detail' => 'Prototype pollution: method override assignment'],
         ];
     }

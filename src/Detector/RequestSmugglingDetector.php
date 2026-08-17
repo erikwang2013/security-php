@@ -20,9 +20,9 @@ class RequestSmugglingDetector extends AbstractRegexDetector
         return [
             '/Transfer-Encoding\s*:\s*chunked/i'
                                                 => ['severity' => 'high',     'detail' => 'Transfer-Encoding chunked (smuggling indicator)'],
-            '/Transfer-Encoding\s*:\s*[^\r\n]+\r?\n\s*[^\r\n]+/i'
+            '/(?:Transfer-Encoding\s*:[^\r\n]*\r?\n\s*Transfer-Encoding\s*:|Transfer-Encoding\s*:[^\r\n]*\r?\n\s*Content-Length\s*:|Content-Length\s*:[^\r\n]*\r?\n\s*Transfer-Encoding\s*:)/i'
                                                 => ['severity' => 'critical', 'detail' => 'Multiple Transfer-Encoding headers'],
-            '/(?:Content-Length|Transfer-Encoding)\s*:\s*0[\r\n]/i'
+            '/(?:Transfer-Encoding\s*:[^\r\n]*\r?\n\s*Content-Length\s*:\s*0|Content-Length\s*:\s*0\r?\n\s*Transfer-Encoding\s*:)/i'
                                                 => ['severity' => 'high',     'detail' => 'Zero-length body with T-E header'],
             '/Transfer-Encoding\s*:\s*x/ix'
                                                 => ['severity' => 'high',     'detail' => 'Obscured Transfer-Encoding value'],

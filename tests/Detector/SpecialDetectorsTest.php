@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Erikwang2013\Security\Tests\Detector;
 
 use Erikwang2013\Security\Detector\UploadDetector;
+use Erikwang2013\Security\Detector\CommandInjectionDetector;
 use Erikwang2013\Security\Detector\JwtAttackDetector;
 use Erikwang2013\Security\Detector\DataLeakDetector;
 use Erikwang2013\Security\Detector\PrototypePollutionDetector;
@@ -93,6 +94,31 @@ class SpecialDetectorsTest extends TestCase
         unlink($tmp);
 
         $this->assertEmpty($result, 'Safe tar.gz upload should pass');
+    }
+
+    public function testUploadBlocksHtml5MultiFileArray(): void
+    {
+        $detector = new UploadDetector();
+        $result = $detector->detect([
+            'files' => [
+                'name' => ['shell.php'],
+                'tmp_name' => ['/tmp/phpXXX'],
+                'size' => [100],
+                'error' => [0],
+            ],
+        ]);
+        $this->assertNotEmpty($result, 'HTML5 files[] array with shell.php should be detected');
+        $this->assertSame('upload', $result[0]->type);
+    }
+
+    public function testBacktickTextIsNotHighSeverity(): void
+    {
+        $detector = new CommandInjectionDetector();
+        $result = $detector->detect(['x' => '运行 `npm install`']);
+        if (!empty($result)) {
+            $this->assertNotContains($result[0]->severity, ['critical', 'high'],
+                'Plain backtick text should at most be low/medium severity, got: ' . ($result[0]->severity ?? ''));
+        }
     }
 
     // JwtAttackDetector

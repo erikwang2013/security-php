@@ -28,7 +28,7 @@ class CsvInjectionDetector extends AbstractRegexDetector
                                                 => ['severity' => 'low',      'detail' => 'CSV formula numeric function'],
             '/^\+?=?\s*HYPERLINK\s*\(\s*"https?:\/\//i'
                                                 => ['severity' => 'high',     'detail' => 'CSV HYPERLINK to external URL'],
-            '/^\-?\d+\+\d+/'            => ['severity' => 'medium',   'detail' => 'CSV formula injection (calculation)'],
+            '/^[=+\-@]\s*-?\d+\+\d+/'   => ['severity' => 'medium',   'detail' => 'CSV formula injection (calculation)'],
             '/^@SUM\s*\(/i'             => ['severity' => 'low',      'detail' => 'CSV @SUM formula'],
         ];
     }

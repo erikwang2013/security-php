@@ -21,7 +21,8 @@ class OpenRedirectDetector extends AbstractRegexDetector
             '/^\s*\/\/\w+\.[a-z]{2,}/i' => ['severity' => 'high',     'detail' => 'Protocol-relative URL redirect (//domain)'],
             '/^https?:\/\/(?:[^\/]+\/)*@/i'
                                                 => ['severity' => 'high',     'detail' => 'User-info redirect (URL credentials)'],
-            '/^\s*javascript\s*:/i'     => ['severity' => 'critical', 'detail' => 'JavaScript URI redirect'],
+            '/^\s*javascript\s*:(?!\s*(?-i:[A-Z]))/i'
+                                                => ['severity' => 'critical', 'detail' => 'JavaScript URI redirect'],
             '/^\s*data\s*:\s*text\/html/i'
                                                 => ['severity' => 'critical', 'detail' => 'Data URI redirect'],
             '/^\s*vbscript\s*:/i'       => ['severity' => 'critical', 'detail' => 'VBScript URI redirect'],
@@ -29,6 +30,9 @@ class OpenRedirectDetector extends AbstractRegexDetector
             '/%40\w+\.\w{2,}/i'         => ['severity' => 'medium',   'detail' => 'URL-encoded user-info redirect'],
             '/https?:\/\/(?:[^\/]+)@[^\/]+\.[a-z]{2,}/i'
                                                 => ['severity' => 'high',     'detail' => 'Absolute URL with embedded credentials'],
+            '/^\s*\\\\\w+\.[a-z]{2,}/i' => ['severity' => 'high',     'detail' => 'Backslash-prefixed redirect (\\domain)'],
+            '/^\s*%2[fF]%2[fF]\w+\.[a-z]{2,}/i'
+                                                => ['severity' => 'high',     'detail' => 'Encoded protocol-relative redirect'],
         ];
     }
 }

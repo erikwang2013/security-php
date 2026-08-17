@@ -27,12 +27,14 @@ class XssDetector extends AbstractRegexDetector
             '/<style\b[^>]*>/i'        => ['severity' => 'medium',   'detail' => 'CSS tag injection (XSS vector)'],
             '/style\s*=\s*"[^"]*\b(?:expression|javascript)\b/i'
                                         => ['severity' => 'high',     'detail' => 'CSS XSS via style attribute'],
-            '/javascript\s*:/i'         => ['severity' => 'high',     'detail' => 'JavaScript URI scheme'],
+            '/\b(?i:javascript)\s*:(?!\s*[A-Z;])/'
+                                        => ['severity' => 'high',     'detail' => 'JavaScript URI scheme'],
             '/<embed\b/i'               => ['severity' => 'medium',   'detail' => 'Embed tag injection'],
             '/<object\b/i'              => ['severity' => 'medium',   'detail' => 'Object tag injection'],
             '/<link\b/i'                => ['severity' => 'medium',   'detail' => 'Link tag injection'],
             '/<meta\b/i'                => ['severity' => 'low',      'detail' => 'Meta tag injection'],
-            '/expression\s*\(/i'        => ['severity' => 'medium',   'detail' => 'CSS expression injection'],
+            '/\bexpression\s*\(\s*[\'"\w]/i'
+                                        => ['severity' => 'medium',   'detail' => 'CSS expression injection'],
             '/<svg\b/i'                 => ['severity' => 'low',      'detail' => 'SVG tag injection'],
         ];
     }

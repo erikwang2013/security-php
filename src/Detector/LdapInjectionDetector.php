@@ -18,10 +18,9 @@ class LdapInjectionDetector extends AbstractRegexDetector
     protected function patterns(): array
     {
         return [
-            '/\((?:\||\&|!)\s*/'       => ['severity' => 'high',     'detail' => 'LDAP filter operator injection'],
-            '/\*(?:\s*\))/'            => ['severity' => 'high',     'detail' => 'LDAP wildcard + closing paren'],
+            '/\((?:\||&|!)\s*\(/'      => ['severity' => 'high',     'detail' => 'LDAP filter operator injection'],
             '/\(\s*\*\s*=\s*[^)]+\)/'  => ['severity' => 'high',     'detail' => 'LDAP wildcard match filter'],
-            '/\(\s*(?:objectClass|uid|cn|sn|mail|userPassword)\s*=/i'
+            '/\(\s*(?:objectClass|uid|cn|sn|mail|userPassword)\s*=\s*(?:[^()]*[|&!*][^()]*)\)/i'
                                         => ['severity' => 'high',     'detail' => 'LDAP common attribute enumeration'],
             '/\\\\[0-9a-fA-F]{2}/'     => ['severity' => 'medium',   'detail' => 'LDAP hex-encoded character escape'],
             '/\(\s*(?:objectClass|uid|cn|sn)\s*=\s*\*\s*\)/i'

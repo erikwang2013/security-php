@@ -53,6 +53,7 @@ if (!function_exists('security_scan_current_request')) {
             'origin'          => $_SERVER['HTTP_ORIGIN'] ?? '',
             'host'            => $_SERVER['HTTP_HOST'] ?? '',
             'x_forwarded_for' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '',
+            'transfer_encoding' => $_SERVER['HTTP_TRANSFER_ENCODING'] ?? '',
         ]);
     }
 }

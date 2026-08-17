@@ -23,7 +23,7 @@ class SecurityMiddleware
         );
 
         $threats = SecurityGuard::guard($data, [
-            'ip'              => $request->ip() ?? '0.0.0.0',
+            'ip'              => $request->server('REMOTE_ADDR', '0.0.0.0'),
             'method'          => $request->method(),
             'uri'             => $request->path(),
             'content_length'  => $request->header('Content-Length', ''),
@@ -31,6 +31,7 @@ class SecurityMiddleware
             'origin'          => $request->header('Origin', ''),
             'host'            => $request->header('Host', ''),
             'x_forwarded_for' => $request->header('X-Forwarded-For', ''),
+            'transfer_encoding' => $request->header('Transfer-Encoding', ''),
         ]);
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {

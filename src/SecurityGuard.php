@@ -134,6 +134,9 @@ class SecurityGuard
         $filtered['_server.CONTENT_TYPE']   = $meta['content_type'] ?? $_SERVER['CONTENT_TYPE'] ?? '';
         $filtered['_server.HTTP_ORIGIN']    = $meta['origin'] ?? $_SERVER['HTTP_ORIGIN'] ?? '';
         $filtered['_server.HTTP_HOST']      = $meta['host'] ?? $_SERVER['HTTP_HOST'] ?? '';
+        $filtered['_server.TRANSFER_ENCODING'] = ($meta['transfer_encoding'] ?? '') !== ''
+            ? 'Transfer-Encoding: ' . $meta['transfer_encoding']
+            : '';
 
         $oldLimit = ini_get('pcre.backtrack_limit');
         ini_set('pcre.backtrack_limit', '1000000');
@@ -151,8 +154,8 @@ class SecurityGuard
             }
         }
 
-        // Record IP for attack escalation
-        if (!empty($threats) && $ip && self::$ipBlacklist !== null) {
+        // Record IP for attack escalation (log-mode threats don't count)
+        if (!empty($threats) && $ip && self::$ipBlacklist !== null && self::shouldBlock($threats)) {
             self::$ipBlacklist->record($ip);
         }
 
@@ -264,8 +267,14 @@ class SecurityGuard
         [$subnet, $bits] = explode('/', $cidr);
         $bits = (int) $bits;
 
+        // Reject malformed (/abc) or oversized (/33) prefixes before any bit shifting
+        $isV6 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
+        if ($bits < 1 || $bits > ($isV6 ? 128 : 32)) {
+            return false;
+        }
+
         // Detect IPv4 vs IPv6
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
+        if ($isV6) {
             $ipBin = inet_pton($ip);
             $subnetBin = inet_pton($subnet);
             if ($ipBin === false || $subnetBin === false) {
@@ -322,9 +331,16 @@ class SecurityGuard
             if (is_array($value)) {
                 $nested = self::flattenData($value, $path);
                 foreach ($nested as $nk => $nv) {
-                    // If nested path collides with a previously set top-level key,
-                    // the nested value wins (more specific). No silent drops.
-                    $flat[$nk] = $nv;
+                    // Same #n suffix logic as scalars, so key sets are order-independent
+                    if (array_key_exists($nk, $flat)) {
+                        $suffix = 1;
+                        while (array_key_exists("{$nk}#{$suffix}", $flat)) {
+                            $suffix++;
+                        }
+                        $flat["{$nk}#{$suffix}"] = $nv;
+                    } else {
+                        $flat[$nk] = $nv;
+                    }
                 }
                 // Also keep a JSON representation for scanning (catches array-based attacks)
                 $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

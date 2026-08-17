@@ -59,6 +59,7 @@ class SecurityMiddleware implements MiddlewareInterface
             'origin'          => $request->getHeaderLine('Origin'),
             'host'            => $request->getHeaderLine('Host'),
             'x_forwarded_for' => $request->getHeaderLine('X-Forwarded-For'),
+            'transfer_encoding' => $request->getHeaderLine('Transfer-Encoding'),
         ]);
 
         if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {

@@ -370,6 +370,35 @@ class SecurityGuardTest extends TestCase
         $this->assertEmpty($threats, 'Non-string nested values should be skipped');
     }
 
+    // ──────────────── WHITELIST CIDR VALIDATION ────────────────
+
+    public function testWhitelistMalformedCidrDoesNotBypassGuard(): void
+    {
+        $this->config['whitelist_ips'] = ['10.0.0.1/abc'];
+        SecurityGuard::init($this->config);
+
+        $threats = SecurityGuard::guard(['x' => '<script>alert(1)</script>'], ['ip' => '203.0.113.5']);
+        $this->assertNotEmpty($threats, 'Malformed CIDR "10.0.0.1/abc" must NOT whitelist unrelated IPs');
+    }
+
+    public function testWhitelistOversizedPrefixDoesNotThrowOrBypass(): void
+    {
+        $this->config['whitelist_ips'] = ['127.0.0.1/33'];
+        SecurityGuard::init($this->config);
+
+        $threats = SecurityGuard::guard(['x' => '<script>alert(1)</script>'], ['ip' => '203.0.113.5']);
+        $this->assertNotEmpty($threats, 'Prefix /33 must not throw and must NOT whitelist');
+    }
+
+    public function testWhitelistValidCidrStillBypasses(): void
+    {
+        $this->config['whitelist_ips'] = ['127.0.0.1/32'];
+        SecurityGuard::init($this->config);
+
+        $threats = SecurityGuard::guard(['x' => '<script>alert(1)</script>'], ['ip' => '127.0.0.1']);
+        $this->assertEmpty($threats, 'Valid /32 whitelist entry should still skip detection');
+    }
+
     // Whitelist field in nested arrays
 
     public function testWhitelistFieldInNestedArray(): void

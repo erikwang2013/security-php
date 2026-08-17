@@ -20,7 +20,7 @@ class SstiDetector extends AbstractRegexDetector
         return [
             '/\{\{.*?\}\}/'             => ['severity' => 'high',     'detail' => 'Jinja2/Twig SSTI ({{ }})'],
             '/\{\%.*?\%\}/'             => ['severity' => 'high',     'detail' => 'Jinja2/Twig control flow ({% %})'],
-            '/\$\{.*?\}/'               => ['severity' => 'high',     'detail' => 'FreeMarker/Velocity SSTI (${ })'],
+            '/\$\{(?![\w.]+\})[^}]*\}/' => ['severity' => 'high',     'detail' => 'FreeMarker/Velocity SSTI (${ })'],
             '/\$\{[^}]*7\s*\*\s*7[^}]*\}/'
                                         => ['severity' => 'critical', 'detail' => 'SSTI test payload (7*7)'],
             '/\{\{7\s*\*\s*7\}\}/'     => ['severity' => 'critical', 'detail' => 'Twig SSTI test ({{7*7}})'],

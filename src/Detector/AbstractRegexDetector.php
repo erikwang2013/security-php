@@ -29,8 +29,11 @@ abstract class AbstractRegexDetector implements DetectorInterface
             if (!is_string($value)) {
                 continue;
             }
+            // Scan head and tail; patterns spanning the middle gap stay invisible.
+            // ponytail: >128KB payloads can hide attacks across the truncation seam,
+            // switch to chunked scanning with overlap if that matters.
             $scanValue = strlen($value) > self::MAX_SCAN_LENGTH
-                ? substr($value, 0, self::MAX_SCAN_LENGTH)
+                ? substr($value, 0, self::MAX_SCAN_LENGTH) . "\n--TRUNC--\n" . substr($value, -self::MAX_SCAN_LENGTH)
                 : $value;
 
             foreach ($this->patterns() as $pattern => $info) {
