@@ -107,26 +107,36 @@ class Installer implements PluginInterface, EventSubscriberInterface
 }
 
 // ──────────────── framework detectors ────────────────
+// Guarded with function_exists: composer's plugin loader may eval() this
+// file more than once per process (Cannot redeclare otherwise).
 
-function isLaravel(string $root): bool
-{
-    return file_exists($root . '/artisan')
-        && file_exists($root . '/bootstrap/app.php');
+if (!function_exists(__NAMESPACE__ . '\\isLaravel')) {
+    function isLaravel(string $root): bool
+    {
+        return file_exists($root . '/artisan')
+            && file_exists($root . '/bootstrap/app.php');
+    }
 }
 
-function isWebman(string $root): bool
-{
-    return file_exists($root . '/start.php');
+if (!function_exists(__NAMESPACE__ . '\\isWebman')) {
+    function isWebman(string $root): bool
+    {
+        return file_exists($root . '/start.php');
+    }
 }
 
-function isThinkPHP(string $root): bool
-{
-    return file_exists($root . '/think')
-        && is_dir($root . '/app');
+if (!function_exists(__NAMESPACE__ . '\\isThinkPHP')) {
+    function isThinkPHP(string $root): bool
+    {
+        return file_exists($root . '/think')
+            && is_dir($root . '/app');
+    }
 }
 
-function isHyperf(string $root): bool
-{
-    return file_exists($root . '/bin/hyperf.php')
-        && is_dir($root . '/config/autoload');
+if (!function_exists(__NAMESPACE__ . '\\isHyperf')) {
+    function isHyperf(string $root): bool
+    {
+        return file_exists($root . '/bin/hyperf.php')
+            && is_dir($root . '/config/autoload');
+    }
 }
