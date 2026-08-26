@@ -37,7 +37,16 @@ abstract class AbstractRegexDetector implements DetectorInterface
                 : $value;
 
             foreach ($this->patterns() as $pattern => $info) {
-                $result = preg_match($pattern, $scanValue);
+                try {
+                    $result = preg_match($pattern, $scanValue);
+                } catch (\ValueError $e) {
+                    error_log(sprintf(
+                        'Security: Invalid regex pattern in detector "%s": %s',
+                        $this->name(),
+                        $pattern,
+                    ));
+                    continue;
+                }
                 if ($result === false) {
                     error_log(sprintf(
                         'Security: Invalid regex pattern in detector "%s": %s',

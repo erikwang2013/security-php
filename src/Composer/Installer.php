@@ -15,7 +15,7 @@ class Installer implements PluginInterface, EventSubscriberInterface
 {
     private const PACKAGE_NAME = 'erikwang2013/security-php';
 
-    private IOInterface $io;
+    private ?IOInterface $io = null;
 
     public function activate(Composer $composer, IOInterface $io): void
     {
@@ -77,7 +77,7 @@ class Installer implements PluginInterface, EventSubscriberInterface
 
             if (!file_exists($target)) {
                 copy($sourceConfig, $target);
-                $this->io->write("<info>[security-php] Config published to: {$target}</info>");
+                $this->io?->write("<info>[security-php] Config published to: {$target}</info>");
             }
         }
     }

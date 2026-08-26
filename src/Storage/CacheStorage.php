@@ -33,23 +33,26 @@ class CacheStorage implements StorageInterface
         }
 
         $data = json_decode($contents, true);
-        if (!is_array($data) || count($data) !== 2 || !array_key_exists(0, $data)) {
+        if (!is_array($data) || !array_key_exists(0, $data)) {
             return null;
         }
 
-        // Check expiry: stored as [expiry, value]
+        // Check expiry: stored as [expiry, key, value]; legacy [expiry, value]
         if ($data[0] > 0 && $data[0] < time()) {
             @unlink($path);
             return null;
         }
-        return $data[1];
+        if (count($data) >= 3 && $data[1] !== $key) {
+            return null; // md5 collision guard
+        }
+        return count($data) >= 3 ? $data[2] : $data[1];
     }
 
     public function set(string $key, mixed $value): void
     {
         $this->ensureDir();
         $path = $this->path($key);
-        $encoded = json_encode([0, $value], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $encoded = json_encode([0, $key, $value], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($encoded === false) {
             return;
         }
@@ -86,12 +89,16 @@ class CacheStorage implements StorageInterface
         }
 
         foreach ($files as $file) {
-            $name = basename($file);
-            $key = substr($name, strlen($this->prefix));
-            $value = $this->get($key);
-            if ($value !== null) {
-                $result[$key] = $value;
+            $contents = @file_get_contents($file);
+            $data = $contents !== false ? json_decode($contents, true) : null;
+            if (!is_array($data) || count($data) < 3 || !isset($data[1])) {
+                continue;
             }
+            if ($data[0] > 0 && $data[0] < time()) {
+                @unlink($file);
+                continue;
+            }
+            $result[$data[1]] = $data[2];
         }
 
         return $result;

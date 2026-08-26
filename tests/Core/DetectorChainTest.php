@@ -79,12 +79,40 @@ class DetectorChainTest extends TestCase
         $this->assertEmpty($threats, 'Empty data array should produce no threats when detector returns null');
     }
 
-    private function makeDetector(string $name): DetectorInterface
+    public function testAddOrdersByPriorityAscending(): void
     {
-        return new class($name) implements DetectorInterface {
-            public function __construct(private string $detectorName) {}
+        $chain = new DetectorChain();
+        $chain->add($this->makeDetector('late', 10));
+        $chain->add($this->makeDetector('early', -5));
+        $chain->add($this->makeDetector('mid', 0));
+        $chain->add($this->makeDetector('later', 10));
+
+        $threats = $chain->scan(['x' => 'trigger']);
+
+        $this->assertSame(['early', 'mid', 'late', 'later'], array_column($threats, 'type'),
+            'Detectors must run in ascending priority order (lower first)');
+    }
+
+    public function testAddPreservesOrderForEqualPriority(): void
+    {
+        $chain = new DetectorChain();
+        $chain->add($this->makeDetector('a', 0));
+        $chain->add($this->makeDetector('b', 0));
+
+        $threats = $chain->scan(['x' => 'trigger']);
+        $this->assertSame(['a', 'b'], array_column($threats, 'type'),
+            'Equal-priority detectors must keep insertion order');
+    }
+
+    private function makeDetector(string $name, int $priority = 0): DetectorInterface
+    {
+        return new class($name, $priority) implements DetectorInterface {
+            public function __construct(
+                private string $detectorName,
+                private int $detectorPriority,
+            ) {}
             public function name(): string { return $this->detectorName; }
-            public function priority(): int { return 0; }
+            public function priority(): int { return $this->detectorPriority; }
             public function detect(array $data): array {
                 return [new ThreatResult(
                     type: $this->detectorName,

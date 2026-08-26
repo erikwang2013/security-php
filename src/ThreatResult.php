@@ -11,11 +11,11 @@ namespace Erikwang2013\Security;
 class ThreatResult
 {
     public function __construct(
-        public readonly string $type,
-        public readonly string $severity,
-        public readonly string $field,
-        public readonly string $payload,
-        public readonly string $detail,
-        public readonly int $httpStatus = 403,
+        public string $type,
+        public string $severity,
+        public string $field,
+        public string $payload,
+        public string $detail,
+        public int $httpStatus = 403,
     ) {}
 }

@@ -103,30 +103,4 @@ class FileStorage implements StorageInterface
         $data = json_decode($contents, true);
         return is_array($data) ? $data : [];
     }
-
-    private function write(array $data): void
-    {
-        $dir = dirname($this->path);
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0755, true);
-        }
-
-        $json = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if ($json === false) {
-            return;
-        }
-
-        $fp = @fopen($this->path, 'c');
-        if ($fp === false) {
-            return;
-        }
-
-        if (flock($fp, LOCK_EX)) {
-            ftruncate($fp, 0);
-            fwrite($fp, $json);
-            fflush($fp);
-            flock($fp, LOCK_UN);
-        }
-        fclose($fp);
-    }
 }
