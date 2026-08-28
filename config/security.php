@@ -325,8 +325,6 @@ return [
      * 日志配置
      *
      * enabled: 是否记录攻击日志
-     * channel: 日志通道
-     *   'file' — 写入文件（推荐）
      * path: 日志文件路径，留空则使用 sys_get_temp_dir() . '/security.log'
      *   注意：多应用共享主机时，留空默认路径会被多个应用共用同一日志文件，建议显式配置独立路径
      * max_size: 单个日志文件最大体积，单位 MB，超过后自动轮转。设为 0 禁用轮转
@@ -335,7 +333,6 @@ return [
      */
     'log' => [
         'enabled'       => true,
-        'channel'       => 'file',
         'path'          => '',
         'max_size'      => 10,
         'dedup_seconds' => 5,

@@ -77,10 +77,11 @@ if (!function_exists('security_guard')) {
     {
         $threats = security_scan_current_request();
 
-        if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
-            http_response_code(SecurityGuard::blockStatusCode($threats));
+        $block = SecurityGuard::blockDecision($threats);
+        if ($block !== null) {
+            http_response_code($block['status']);
             header('Content-Type: text/plain; charset=utf-8');
-            die(SecurityGuard::blockMessage());
+            die($block['message']);
         }
     }
 }

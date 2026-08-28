@@ -27,22 +27,31 @@ class IpBlacklist
 
     public function isBanned(string $ip): bool
     {
+        return $this->check($ip) !== null;
+    }
+
+    /**
+     * Single storage read: returns the ban entry if $ip is banned, null otherwise.
+     * Expired bans are cleaned up.
+     */
+    public function check(string $ip): ?array
+    {
         $entry = $this->storage->get($ip);
         if ($entry === null) {
-            return false;
+            return null;
         }
 
         $now = time();
         if (($entry['banned_until'] ?? 0) > $now) {
-            return true;
+            return $entry;
         }
 
         // Ban expired, clean up
-        if (($entry['banned_until'] ?? 0) > 0 && $entry['banned_until'] <= $now) {
+        if (($entry['banned_until'] ?? 0) > 0) {
             $this->storage->delete($ip);
         }
 
-        return false;
+        return null;
     }
 
     public function record(string $ip): ?array
@@ -79,11 +88,7 @@ class IpBlacklist
 
     public function getBanInfo(string $ip): ?array
     {
-        $entry = $this->storage->get($ip);
-        if ($entry === null || ($entry['banned_until'] ?? 0) <= time()) {
-            return null;
-        }
-        return $entry;
+        return $this->check($ip);
     }
 
     /**

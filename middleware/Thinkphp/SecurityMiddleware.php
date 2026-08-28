@@ -59,11 +59,12 @@ class SecurityMiddleware
             'transfer_encoding' => $request->header('transfer-encoding', ''),
         ]);
 
-        if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
+        $block = SecurityGuard::blockDecision($threats);
+        if ($block !== null) {
             return Response::create(
-                SecurityGuard::blockMessage(),
+                $block['message'],
                 'text/plain; charset=utf-8',
-                SecurityGuard::blockStatusCode($threats)
+                $block['status']
             );
         }
 

@@ -50,26 +50,25 @@ class RedisStorage implements StorageInterface
     {
         $result = [];
         $prefixLen = strlen($this->prefix);
-        $iterator = null;
-
-        while (true) {
-            $keys = $this->redis->scan($iterator, $this->prefix . '*');
-            if ($keys === false) {
-                break;
-            }
+        $this->eachKey(function ($keys) use (&$result, $prefixLen) {
             foreach ($keys as $fullKey) {
                 $shortKey = substr($fullKey, $prefixLen);
                 $result[$shortKey] = $this->get($shortKey);
             }
-            if ($iterator === 0) {
-                break;
-            }
-        }
-
+        });
         return $result;
     }
 
     public function clear(): void
+    {
+        $this->eachKey(function ($keys) {
+            if (!empty($keys)) {
+                $this->redis->del($keys);
+            }
+        });
+    }
+
+    private function eachKey(callable $fn): void
     {
         $iterator = null;
         while (true) {
@@ -77,9 +76,7 @@ class RedisStorage implements StorageInterface
             if ($keys === false) {
                 break;
             }
-            if (!empty($keys)) {
-                $this->redis->del($keys);
-            }
+            $fn($keys);
             if ($iterator === 0) {
                 break;
             }

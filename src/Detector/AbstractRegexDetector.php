@@ -25,6 +25,7 @@ abstract class AbstractRegexDetector implements DetectorInterface
     public function detect(array $data): array
     {
         $threats = [];
+        $patterns = $this->patterns();
         foreach ($data as $field => $value) {
             if (!is_string($value)) {
                 continue;
@@ -36,23 +37,15 @@ abstract class AbstractRegexDetector implements DetectorInterface
                 ? substr($value, 0, self::MAX_SCAN_LENGTH) . "\n--TRUNC--\n" . substr($value, -self::MAX_SCAN_LENGTH)
                 : $value;
 
-            foreach ($this->patterns() as $pattern => $info) {
+            foreach ($patterns as $pattern => $info) {
                 try {
                     $result = preg_match($pattern, $scanValue);
                 } catch (\ValueError $e) {
-                    error_log(sprintf(
-                        'Security: Invalid regex pattern in detector "%s": %s',
-                        $this->name(),
-                        $pattern,
-                    ));
+                    $this->logInvalidPattern($pattern);
                     continue;
                 }
                 if ($result === false) {
-                    error_log(sprintf(
-                        'Security: Invalid regex pattern in detector "%s": %s',
-                        $this->name(),
-                        $pattern,
-                    ));
+                    $this->logInvalidPattern($pattern);
                     continue;
                 }
                 if ($result === 1) {
@@ -72,6 +65,15 @@ abstract class AbstractRegexDetector implements DetectorInterface
     public function priority(): int
     {
         return 0;
+    }
+
+    private function logInvalidPattern(string $pattern): void
+    {
+        error_log(sprintf(
+            'Security: Invalid regex pattern in detector "%s": %s',
+            $this->name(),
+            $pattern,
+        ));
     }
 
     /**

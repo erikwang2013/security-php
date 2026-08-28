@@ -63,11 +63,12 @@ class SecurityMiddleware implements MiddlewareInterface
             'transfer_encoding' => $request->header('transfer-encoding') ?? '',
         ]);
 
-        if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
+        $block = SecurityGuard::blockDecision($threats);
+        if ($block !== null) {
             return new Response(
-                SecurityGuard::blockStatusCode($threats),
+                $block['status'],
                 ['Content-Type' => 'text/plain; charset=utf-8'],
-                SecurityGuard::blockMessage()
+                $block['message']
             );
         }
 

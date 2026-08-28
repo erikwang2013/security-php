@@ -33,12 +33,10 @@ class JwtAttackDetector implements DetectorInterface
                 continue;
             }
 
-            // Check for JWT tokens
             if (preg_match($jwtPattern, $value, $matches)) {
                 $jwt = $matches[1];
                 $parts = explode('.', $jwt);
 
-                // Decode header
                 $header = $this->base64UrlDecode($parts[0]);
                 if ($header === null) {
                     continue;

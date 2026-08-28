@@ -233,7 +233,6 @@ The config file lives at `config/security.php`. All options are documented with 
 ```php
 'log' => [
     'enabled'       => true,
-    'channel'       => 'file',
     'path'          => '',      // empty = system temp directory
     'max_size'      => 10,      // MB, auto-rotates. 0 to disable rotation
     'dedup_seconds' => 5,       // dedup window — same attack within N seconds logged once per request

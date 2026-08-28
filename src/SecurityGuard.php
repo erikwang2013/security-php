@@ -19,6 +19,7 @@ class SecurityGuard
     private static ?Logger $logger = null;
     private static ?array $config = null;
     private static ?IpBlacklist $ipBlacklist = null;
+    private static ?array $whitelistFields = null;
 
     /**
      * Initialize with config. Called once by middleware or bootstrap.
@@ -26,6 +27,7 @@ class SecurityGuard
     public static function init(array $config): void
     {
         self::$config = $config;
+        self::$whitelistFields = array_flip($config['whitelist_fields'] ?? []);
 
         if (empty($config['enabled'])) {
             return;
@@ -89,10 +91,7 @@ class SecurityGuard
      */
     public static function guard(array $data, array $meta = []): array
     {
-        if (self::$config === null) {
-            $defaultConfig = require dirname(__DIR__) . '/config/security.php';
-            self::init($defaultConfig);
-        }
+        self::getConfig();
 
         if (empty(self::$config['enabled']) || self::$chain === null) {
             return [];
@@ -107,22 +106,23 @@ class SecurityGuard
             return [];
         }
 
-        // IP blacklist check
-        if ($ip && self::$ipBlacklist !== null && self::$ipBlacklist->isBanned($ip)) {
-            $info = self::$ipBlacklist->getBanInfo($ip);
-            $bannedUntil = $info['banned_until'] ?? 0;
-            $banThreat = new ThreatResult(
-                type: 'ip_blacklist',
-                severity: 'high',
-                field: '_server.REMOTE_ADDR',
-                payload: $ip,
-                detail: 'IP temporarily banned until ' . date('Y-m-d H:i:s', $bannedUntil),
-                httpStatus: 403,
-            );
-            if (self::$logger !== null) {
-                self::$logger->log($banThreat, $meta);
+        if ($ip && self::$ipBlacklist !== null) {
+            $banInfo = self::$ipBlacklist->check($ip);
+            if ($banInfo !== null) {
+                $bannedUntil = $banInfo['banned_until'] ?? 0;
+                $banThreat = new ThreatResult(
+                    type: 'ip_blacklist',
+                    severity: 'high',
+                    field: '_server.REMOTE_ADDR',
+                    payload: $ip,
+                    detail: 'IP temporarily banned until ' . date('Y-m-d H:i:s', $bannedUntil),
+                    httpStatus: 403,
+                );
+                if (self::$logger !== null) {
+                    self::$logger->log($banThreat, $meta);
+                }
+                return [$banThreat];
             }
-            return [$banThreat];
         }
 
         $filtered = self::filterWhitelistFields(self::flattenData($data));
@@ -139,11 +139,14 @@ class SecurityGuard
             : '';
 
         $oldLimit = ini_get('pcre.backtrack_limit');
-        ini_set('pcre.backtrack_limit', '1000000');
+        if ($oldLimit !== '1000000') {
+            ini_set('pcre.backtrack_limit', '1000000');
+        }
         try {
             $threats = self::$chain->scan($filtered);
         } finally {
-            if ($oldLimit !== false && $oldLimit !== '') {
+            // Guard false/'' like d155aa2: ini_set(false) would clear the limit
+            if ($oldLimit !== false && $oldLimit !== '' && $oldLimit !== '1000000') {
                 ini_set('pcre.backtrack_limit', $oldLimit);
             }
         }
@@ -203,6 +206,20 @@ class SecurityGuard
     public static function blockMessage(): string
     {
         return (string) (self::getConfig()['block_message'] ?? 'Request blocked by security policy');
+    }
+
+    /**
+     * Combined block decision: null = proceed, else [status, message].
+     */
+    public static function blockDecision(array $threats): ?array
+    {
+        if (empty($threats) || !self::shouldBlock($threats)) {
+            return null;
+        }
+        return [
+            'status' => self::blockStatusCode($threats),
+            'message' => self::blockMessage(),
+        ];
     }
 
     private static function getConfig(): array
@@ -316,11 +333,7 @@ class SecurityGuard
 
     private static function filterWhitelistFields(array $data): array
     {
-        $whitelist = self::$config['whitelist_fields'] ?? [];
-        if (empty($whitelist)) {
-            return $data;
-        }
-        return array_diff_key($data, array_flip($whitelist));
+        return array_diff_key($data, self::$whitelistFields ?? []);
     }
 
     private static function flattenData(array $data, string $prefix = ''): array
@@ -331,16 +344,7 @@ class SecurityGuard
             if (is_array($value)) {
                 $nested = self::flattenData($value, $path);
                 foreach ($nested as $nk => $nv) {
-                    // Same #n suffix logic as scalars, so key sets are order-independent
-                    if (array_key_exists($nk, $flat)) {
-                        $suffix = 1;
-                        while (array_key_exists("{$nk}#{$suffix}", $flat)) {
-                            $suffix++;
-                        }
-                        $flat["{$nk}#{$suffix}"] = $nv;
-                    } else {
-                        $flat[$nk] = $nv;
-                    }
+                    $flat[self::uniqueKey($flat, $nk)] = $nv;
                 }
                 // Also keep a JSON representation for scanning (catches array-based attacks)
                 $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -348,20 +352,23 @@ class SecurityGuard
                     $flat[$path] = $encoded;
                 }
             } elseif (is_scalar($value)) {
-                // Resolve collisions: if this path already exists (from a nested value),
-                // append a suffix to preserve both values for scanning
-                if (array_key_exists($path, $flat)) {
-                    $suffix = 1;
-                    while (array_key_exists("{$path}#{$suffix}", $flat)) {
-                        $suffix++;
-                    }
-                    $flat["{$path}#{$suffix}"] = (string) $value;
-                } else {
-                    $flat[$path] = (string) $value;
-                }
+                // Collision source: the nested value's JSON repr already took $path
+                $flat[self::uniqueKey($flat, $path)] = (string) $value;
             }
         }
         return $flat;
+    }
+
+    private static function uniqueKey(array $flat, string $path): string
+    {
+        if (!array_key_exists($path, $flat)) {
+            return $path;
+        }
+        $suffix = 1;
+        while (array_key_exists("{$path}#{$suffix}", $flat)) {
+            $suffix++;
+        }
+        return "{$path}#{$suffix}";
     }
 
     /**
@@ -412,5 +419,6 @@ class SecurityGuard
         self::$logger = null;
         self::$config = null;
         self::$ipBlacklist = null;
+        self::$whitelistFields = null;
     }
 }

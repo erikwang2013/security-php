@@ -238,7 +238,6 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 ```php
 'log' => [
     'enabled'       => true,
-    'channel'       => 'file',
     'path'          => '',      // 留空使用临时目录
     'max_size'      => 10,      // MB，超过后自动轮转。设为 0 禁用
     'dedup_seconds' => 5,       // 去重窗口，同一请求内相同攻击不重复记录
