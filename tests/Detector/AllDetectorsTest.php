@@ -291,6 +291,10 @@ class AllDetectorsTest extends TestCase
         yield 'Safe: bare CL header' => [new HeaderInjectionDetector(), 'x', 'Content-Length: 0'];
         yield 'Safe: range 5--10' => [new SqlInjectionDetector(), 'x', '5--10'];
         yield 'Safe: range 2023--2024' => [new SqlInjectionDetector(), 'x', '2023--2024'];
+        yield 'Safe: year search 2024--2025' => [new SqlInjectionDetector(), 'q', '2024--2025'];
+        yield 'Safe: donation param donation=5' => [new SqlInjectionDetector(), 'q', 'donation=5'];
+        yield 'Safe: chinese title with --' => [new SqlInjectionDetector(), 'q', '斗破苍穹--第一章'];
+        yield 'Safe: english title with --' => [new SqlInjectionDetector(), 'q', 'The Great Novel -- Part 2'];
         yield 'Safe: /etc/hosts text' => [new PathTraversalDetector(), 'x', '/etc/hosts'];
         yield 'Safe: javascript prose' => [new OpenRedirectDetector(), 'x', 'JavaScript: The Good Parts'];
         yield 'Safe: template variable' => [new SstiDetector(), 'x', '${user.name}'];
