@@ -1,9 +1,9 @@
 {
     "name": "erikwang2013/security-php",
-    "description": "A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks (session hijack, unusual login, data tamper, brute-force lockout), compatible with Laravel, Webman, ThinkPHP, and Hyperf.",
+    "description": "A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks (session hijack, unusual login, data tamper, brute-force lockout). Works with Laravel, Webman, ThinkPHP, and Hyperf, or with no framework at all via global functions.",
     "type": "composer-plugin",
     "license": "MIT",
-    "keywords": ["security", "xss", "sql-injection", "waf", "attack-detection", "session-hijack", "brute-force", "identity"],
+    "keywords": ["security", "xss", "sql-injection", "waf", "attack-detection", "session-hijack", "brute-force", "identity", "framework-agnostic"],
     "authors": [
         {
             "name": "erik",

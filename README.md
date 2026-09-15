@@ -2,7 +2,7 @@
 
 > [English Documentation](README_EN.md)
 
-基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架。
+基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架，也可**脱离框架**用全局函数直接接入。
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -10,7 +10,7 @@ Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ## 项目说明
 
-Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。在无状态的正则检测之外，`identity` 模块另提供**会话劫持 / 异地登录 / 数据篡改 / 登录暴力破解锁定**四类跨请求检测，Cookie 与会话 Token 登录都在覆盖范围内（见「身份维度检测」）。此外内置编码归一化预处理（对抗 URL 编码、全角字符、HTML 实体绕过）与安全响应头注入。
+Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。在无状态的正则检测之外，`identity` 模块另提供**会话劫持 / 异地登录 / 数据篡改 / 登录暴力破解锁定**四类跨请求检测，Cookie 与会话 Token 登录都在覆盖范围内（见「身份维度检测」）。此外内置编码归一化预处理（对抗 URL 编码、全角字符、HTML 实体绕过）与安全响应头注入。框架中间件与无框架全局函数 `security_guard()` 走同一条链路、能力一致。
 
 ### 支持的攻击类型
 
@@ -266,7 +266,7 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 ],
 ```
 
-取值为空字符串的头会被跳过，所以可以逐条按需开启。中间件在**正常响应与拦截响应**上都会注入这些头；手动调用场景可用 `SecurityGuard::securityHeaders()` 取出后自行写入。
+取值为空字符串的头会被跳过，所以可以逐条按需开启。中间件与全局函数 `security_guard()` 在**正常响应与拦截响应**上都会注入这些头；自行拼装响应时（例如没有走 `security_guard()`）可用 `SecurityGuard::securityHeaders()` 取出后写入。
 
 ### 日志配置
 
@@ -437,7 +437,7 @@ security-php/
 │   ├── IpBlacklist.php                   # IP 攻击升级黑名单
 │   ├── Logger.php                        # 攻击日志：原子写入 / 轮转 / 去重 / CRLF 防护
 │   ├── ThreatResult.php                  # 威胁结果值对象
-│   ├── helpers.php                       # 全局函数 security_guard() / security_scan_current_request()
+│   ├── helpers.php                       # 全局函数 security_guard() / security_scan_current_request()，无框架入口，与中间件同链路
 │   ├── Composer/Installer.php            # composer-plugin：安装时发布配置
 │   ├── Detector/                         # 31 个无状态检测器
 │   │   ├── AbstractRegexDetector.php     #   正则基类（25 个检测器继承它）

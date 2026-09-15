@@ -120,9 +120,11 @@ File-based attack log:
 
 ### Global Functions (helpers.php)
 - `security_scan(array $data): array` — scan arbitrary data
-- `security_scan_current_request(): array` — auto-extract from superglobals
+- `security_scan_current_request(): array` — auto-extract from superglobals and pass the same `$meta` the middlewares pass (notably `cookies`, `user_agent` and the `headers` named by `identity.session.headers`, so the identity layer works here too; `Authorization` falls back to `getallheaders()` under Apache+CGI)
 - `security_is_safe(array $data): bool` — boolean check
-- `security_guard(): void` — scan + die(403) on block
+- `security_guard(): void` — emit `security_headers.*`, scan, then die with the threat's own status code on a block (not always 403)
+
+The non-framework path is not a reduced mode: it runs the same pipeline as the middlewares. Only the caller-driven identity hooks (`recordLogin()` / `recordFailedLogin()` / `isLockedOut()`) stay with the application, exactly as in a framework.
 
 ### Framework Middlewares
 Each middleware:
@@ -237,3 +239,6 @@ erikwang2013/security-php/
 | Webman | `$request->post()` + `$request->get()` | Manual in config/middleware.php |
 | ThinkPHP | `$request->param()` + `$request->file()` | Manual in app/middleware.php |
 | Hyperf | `$request->getParsedBody()` + `$request->getUploadedFiles()` | Manual in config/middlewares.php |
+| None (plain PHP) | `$_GET` / `$_POST` / `$_COOKIE` / `$_FILES` + `$_SERVER` headers | Call `security_guard()` in a bootstrap file |
+
+The "None" row is a first-class adapter, not a fallback: `helpers.php` performs the same header injection and the same identity-layer `$meta` assembly as the four middlewares.

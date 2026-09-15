@@ -2,7 +2,7 @@
 
 > [中文文档](README.md)
 
-A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks, compatible with Laravel, Webman, ThinkPHP, and Hyperf.
+A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks, compatible with Laravel, Webman, ThinkPHP, and Hyperf — or usable with **no framework at all** via global functions.
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -10,7 +10,7 @@ Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ## Overview
 
-Security PHP is a lightweight PHP security middleware that detects common web attack payloads through regex pattern matching and structural analysis. Each detector is independently configurable (enable/disable + block/log mode), with IP whitelisting (IPv4/IPv6 CIDR), IP attack escalation blacklist (5 attempts/60s → 15min ban), field whitelisting, log rotation, and deduplication. Detectors can return custom HTTP status codes (405/413/415, etc.). Persistent data supports File/Redis/Cache storage backends, switchable via config. Beyond the stateless regex checks, the `identity` module adds **session hijack / unusual login / data tamper / login brute-force lockout** detection — cross-request checks that cover both cookie sessions and session tokens (see "Identity Detection"). It also ships encoding normalization (defeating URL-encoding, fullwidth-character and HTML-entity bypasses) and security response header injection.
+Security PHP is a lightweight PHP security middleware that detects common web attack payloads through regex pattern matching and structural analysis. Each detector is independently configurable (enable/disable + block/log mode), with IP whitelisting (IPv4/IPv6 CIDR), IP attack escalation blacklist (5 attempts/60s → 15min ban), field whitelisting, log rotation, and deduplication. Detectors can return custom HTTP status codes (405/413/415, etc.). Persistent data supports File/Redis/Cache storage backends, switchable via config. Beyond the stateless regex checks, the `identity` module adds **session hijack / unusual login / data tamper / login brute-force lockout** detection — cross-request checks that cover both cookie sessions and session tokens (see "Identity Detection"). It also ships encoding normalization (defeating URL-encoding, fullwidth-character and HTML-entity bypasses) and security response header injection. Framework middlewares and the framework-free `security_guard()` run the same pipeline and expose the same capabilities.
 
 ### Supported Attack Types
 
@@ -261,7 +261,7 @@ The config file lives at `config/security.php`. All options are documented with 
 ],
 ```
 
-Headers whose value is an empty string are skipped, so you can turn them on one at a time. The middleware injects them on **both normal and blocked responses**; when calling the guard manually, fetch them with `SecurityGuard::securityHeaders()` and write them yourself.
+Headers whose value is an empty string are skipped, so you can turn them on one at a time. The middlewares and the global `security_guard()` inject them on **both normal and blocked responses**; if you assemble the response yourself (i.e. without `security_guard()`), fetch them with `SecurityGuard::securityHeaders()` and write them yourself.
 
 ### Logging
 
@@ -434,7 +434,7 @@ security-php/
 │   ├── IpBlacklist.php                   # IP attack escalation blacklist
 │   ├── Logger.php                        # Attack log: atomic writes / rotation / dedup / CRLF defence
 │   ├── ThreatResult.php                  # Threat value object
-│   ├── helpers.php                       # Global security_guard() / security_scan_current_request()
+│   ├── helpers.php                       # Global security_guard() / security_scan_current_request() — framework-free entry point, same pipeline as the middlewares
 │   ├── Composer/Installer.php            # composer-plugin: publishes config on install
 │   ├── Detector/                         # 31 stateless detectors
 │   │   ├── AbstractRegexDetector.php     #   Regex base class (25 detectors extend it)
