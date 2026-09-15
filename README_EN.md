@@ -94,7 +94,7 @@ Requires PHP >= 8.0.
 
 ## Usage
 
-### Quick Start (Global Functions)
+### Quick Start (Global Functions / No Framework)
 
 ```php
 <?php
@@ -109,9 +109,17 @@ if (!empty($threats)) {
     }
 }
 
-// Or one-liner: scan + auto-block
+// Or one-liner: security headers + scan + auto-block
 security_guard();
 ```
+
+**Framework-free projects run the exact same pipeline as the middlewares** — everything a middleware does, `security_guard()` does:
+
+- Emits `security_headers` before scanning, so **both the blocked and the passing response carry the headers**;
+- On a detector in block mode, terminates with the threat's own status code (401/403/405/413/415…);
+- Feeds `cookies` / `user_agent` / `authorization`·`x-token`·`x-auth-token` into the identity layer, so **session-hijack and token-login detection work here too**, with no extra configuration. Under Apache+CGI `Authorization` never reaches `$_SERVER`, so it falls back to `getallheaders()`.
+
+`security_guard()` only covers the automatic half; `recordLogin()` / `recordFailedLogin()` / `isLockedOut()` still belong in your own login branches, exactly as with the frameworks (see "Identity Checks").
 
 ### Laravel
 
@@ -369,7 +377,7 @@ $threat = SecurityGuard::recordFailedLogin($userId, $ip);
 if ($threat !== null) { /* this attempt locked the account */ }
 ```
 
-**Known limitations**: (1) the first login becomes the baseline — the first login an account ever makes is silent, so an attacker who logs in before the real owner defines "normal"; (2) same for sessions: an attacker who uses a token/session before its real owner sets the baseline; (3) keep the key in the `SECURITY_SIGNING_KEY` environment variable, never in version control; (4) `session.cookie` and `session.headers` must stay in sync with the values read in `middleware/*/SecurityMiddleware.php`; (5) with `include_ip => false` (the default) the lock is keyed to the **account**, so an attacker can lock any account out by hammering it with wrong passwords — which is why `lock_seconds` defaults low; switch `include_ip` on for a stricter policy, at the cost of an attacker resetting the counter by rotating IPs.
+**Known limitations**: (1) the first login becomes the baseline — the first login an account ever makes is silent, so an attacker who logs in before the real owner defines "normal"; (2) same for sessions: an attacker who uses a token/session before its real owner sets the baseline; (3) keep the key in the `SECURITY_SIGNING_KEY` environment variable, never in version control; (4) `session.cookie` and `session.headers` must stay in sync with the values read in `middleware/*/SecurityMiddleware.php` and `src/helpers.php` — change the config and those move together; (5) with `include_ip => false` (the default) the lock is keyed to the **account**, so an attacker can lock any account out by hammering it with wrong passwords — which is why `lock_seconds` defaults low; switch `include_ip` on for a stricter policy, at the cost of an attacker resetting the counter by rotating IPs.
 
 ### IP Attack Escalation Blacklist
 
@@ -579,7 +587,7 @@ interface StorageInterface {
 - Core detection logic is zero-dependency, framework-agnostic, requires only PHP 8.0 standard library
 - Laravel auto-discovered via `extra.laravel.providers`
 - Webman/ThinkPHP/Hyperf registered manually in middleware config
-- Global function `security_guard()` supports non-framework projects
+- Global functions `security_guard()` / `security_scan_current_request()` support framework-free projects, with security headers and identity checks (session hijack / token login) identical to the middlewares
 
 **6. Adding a New Detector**
 

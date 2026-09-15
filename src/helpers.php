@@ -44,6 +44,22 @@ if (!function_exists('security_scan_current_request')) {
             }
         }
 
+        // Apache+CGI keeps Authorization out of $_SERVER; getallheaders() is the
+        // documented way back to it. Every other header arrives as HTTP_*.
+        $header = static function (string $serverKey, string $name): string {
+            $value = $_SERVER[$serverKey] ?? '';
+            if ($value !== '' || !function_exists('getallheaders')) {
+                return (string) $value;
+            }
+            foreach (getallheaders() as $key => $val) {
+                if (strcasecmp((string) $key, $name) === 0) {
+                    return (string) $val;
+                }
+            }
+
+            return '';
+        };
+
         return SecurityGuard::guard($data, [
             'ip'              => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
             'method'          => $_SERVER['REQUEST_METHOD'] ?? 'GET',
@@ -54,6 +70,17 @@ if (!function_exists('security_scan_current_request')) {
             'host'            => $_SERVER['HTTP_HOST'] ?? '',
             'x_forwarded_for' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '',
             'transfer_encoding' => $_SERVER['HTTP_TRANSFER_ENCODING'] ?? '',
+            // Session identity is read from here, not from $data: the merge above
+            // puts cookies first, so a same-named query/post field would
+            // otherwise shadow the real cookie.
+            'cookies'         => $_COOKIE,
+            'user_agent'      => $header('HTTP_USER_AGENT', 'User-Agent'),
+            // Keep these names in sync with identity.session.headers
+            'headers'         => [
+                'authorization' => $header('HTTP_AUTHORIZATION', 'Authorization'),
+                'x-token'       => $header('HTTP_X_TOKEN', 'X-Token'),
+                'x-auth-token'  => $header('HTTP_X_AUTH_TOKEN', 'X-Auth-Token'),
+            ],
         ]);
     }
 }
@@ -72,9 +99,16 @@ if (!function_exists('security_guard')) {
     /**
      * Scan current request and die with 403 if any detector is in block mode.
      * Suitable for non-framework projects or bootstrap files.
+     *
+     * Sets the configured security headers first, so they land on both the
+     * blocked and the passing response — same as the framework middlewares.
      */
     function security_guard(): void
     {
+        foreach (SecurityGuard::securityHeaders() as $name => $value) {
+            header($name . ': ' . $value);
+        }
+
         $threats = security_scan_current_request();
 
         $block = SecurityGuard::blockDecision($threats);

@@ -94,7 +94,7 @@ composer require erikwang2013/security-php
 
 ## 使用说明
 
-### 快速开始（全局函数）
+### 快速开始（全局函数 / 无框架）
 
 ```php
 <?php
@@ -109,9 +109,17 @@ if (!empty($threats)) {
     }
 }
 
-// 或一行：安全检测 + 自动拦截
+// 或一行：注入安全响应头 + 安全检测 + 自动拦截
 security_guard();
 ```
+
+**无框架项目与框架走同一条链路**，中间件做的事 `security_guard()` 都做：
+
+- 先注入 `security_headers`，再扫描 —— **被拦与放行两条路径都带响应头**；
+- 命中 block 模式的检测器时，按威胁自带状态码终止（401/403/405/413/415…）；
+- `cookies` / `user_agent` / `authorization`·`x-token`·`x-auth-token` 一并送入身份维度检测，因此**无框架项目同样覆盖会话劫持与 Token 登录**，无需额外配置。`Authorization` 在 Apache+CGI 下不出现在 `$_SERVER`，已回退到 `getallheaders()` 读取。
+
+`security_guard()` 只跑自动部分；`recordLogin()` / `recordFailedLogin()` / `isLockedOut()` 仍需应用在自己的登录分支里调用（做法与框架相同，见「身份维度检测」）。
 
 ### Laravel
 
@@ -372,7 +380,7 @@ $threat = SecurityGuard::recordFailedLogin($userId, $ip);
 if ($threat !== null) { /* 本次尝试已触发锁定，账号将被拒绝 */ }
 ```
 
-**已知局限**：① 首个登录者即基线 —— 账号首次登录不告警，攻击者若抢在真实用户之前登录，其地点会成为"常用地点"；② 会话同理，攻击者若先于真实用户使用同一 Token/会话，会先建立基线；③ 密钥走 `SECURITY_SIGNING_KEY` 环境变量，切勿写进版本库；④ `session.cookie` 与 `session.headers` 需与 `middleware/*/SecurityMiddleware.php` 中的取值保持一致；⑤ `include_ip => false`（默认）时锁定以**账号**为单位，攻击者用任意密码反复刷某账号即可将其锁死 —— 这也是 `lock_seconds` 默认偏短的原因，需要更严格时改开 `include_ip`，代价是攻击者轮换 IP 即可重置计数。
+**已知局限**：① 首个登录者即基线 —— 账号首次登录不告警，攻击者若抢在真实用户之前登录，其地点会成为"常用地点"；② 会话同理，攻击者若先于真实用户使用同一 Token/会话，会先建立基线；③ 密钥走 `SECURITY_SIGNING_KEY` 环境变量，切勿写进版本库；④ `session.cookie` 与 `session.headers` 需与 `middleware/*/SecurityMiddleware.php` 及 `src/helpers.php` 中的取值保持一致（改配置时这些地方要一起改）；⑤ `include_ip => false`（默认）时锁定以**账号**为单位，攻击者用任意密码反复刷某账号即可将其锁死 —— 这也是 `lock_seconds` 默认偏短的原因，需要更严格时改开 `include_ip`，代价是攻击者轮换 IP 即可重置计数。
 
 ### IP 攻击升级黑名单
 
@@ -584,7 +592,7 @@ interface StorageInterface {
 - 核心检测逻辑与框架零耦合，仅依赖 PHP 8.0 标准库
 - Laravel 通过 `extra.laravel.providers` 自动发现
 - Webman/ThinkPHP/Hyperf 手动在中间件配置中注册
-- 全局函数 `security_guard()` 支持无框架项目
+- 全局函数 `security_guard()` / `security_scan_current_request()` 支持无框架项目，安全响应头与身份维度检测（会话劫持 / Token 登录）与中间件完全一致
 
 **6. 扩展新检测器**
 
