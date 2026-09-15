@@ -376,6 +376,61 @@ class SecurityGuard
         return true;
     }
 
+    /**
+     * Merge request sources without dropping shadowed values.
+     *
+     * `array_merge()` keeps one value per name, and whatever it drops never
+     * reaches a detector — while the application may well read the dropped one.
+     * Every framework prefers a different source (Laravel body-over-query,
+     * Hyperf query-over-body, Webman post-over-get) and none of those matches
+     * every way an app can read the same name, so a same-named field on two
+     * sources used to be a hole in the whole regex family of detectors.
+     *
+     * The last source still owns the bare name, exactly as `array_merge()` left
+     * it, so log fields, `whitelist_fields` entries and configs keep working
+     * unchanged; whatever that displaces survives under `_<source>.<name>`, the
+     * naming the threat list already uses for `_server.REMOTE_ADDR`. The change
+     * is purely additive — nothing that used to be scanned stops being scanned.
+     *
+     * A name in `whitelist_fields` is exempt from *every* source: the whitelist
+     * is a statement about the name, not about which source carried it.
+     *
+     * @param  array<string, mixed> $sources source label => values, in array_merge order
+     * @return array<string, mixed>
+     */
+    public static function mergeRequestSources(array $sources): array
+    {
+        // Lazy config init: the whitelist has to be known here, and in the
+        // non-framework path this runs before guard() would have initialised it.
+        self::getConfig();
+        $whitelist = self::$whitelistFields ?? [];
+
+        $data = [];
+        $owner = [];
+        foreach ($sources as $source => $values) {
+            if (!is_array($values)) {
+                continue;
+            }
+            foreach ($values as $key => $value) {
+                if (!array_key_exists($key, $data)) {
+                    $data[$key] = $value;
+                    $owner[$key] = $source;
+                    continue;
+                }
+                // Identical values lose nothing, so the displaced copy is only
+                // kept when it actually differs. A whitelisted name is skipped
+                // by the detectors whatever it holds, so it needs no copy either.
+                if ($data[$key] !== $value && !isset($whitelist[$key])) {
+                    $data['_' . $owner[$key] . '.' . $key] = $data[$key];
+                }
+                $data[$key] = $value;
+                $owner[$key] = $source;
+            }
+        }
+
+        return $data;
+    }
+
     private static function filterWhitelistFields(array $data): array
     {
         return array_diff_key($data, self::$whitelistFields ?? []);

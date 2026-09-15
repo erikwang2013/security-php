@@ -80,6 +80,8 @@ Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配�
 | `upload` | 恶意文件上传 — 扩展名白名单 + PHP 标签 (`<?php`, `<?=`) 内容扫描 |
 | `data_leak` | 敏感数据泄露 — 信用卡号、AWS Access Key、私钥头 `-----BEGIN`、数据库连接串、API Token、JWT Secret |
 
+> `upload` 的内容检查在文件头部 1MB 内匹配 `<?php` / `<?=`，且**不看扩展名是否在白名单内** —— 压缩包、Office 文档、含 PHP 片段的文本都会被判 `critical`，这是为堵绕过而做的取舍。若业务上确有这类合法上传，只能整体放宽 `detectors.upload.mode`（配置粒度是检测器，扩展名检查会一并放宽）。
+
 ---
 
 ## 安装
@@ -460,9 +462,10 @@ security-php/
 │   ├── Thinkphp/SecurityMiddleware.php
 │   └── Hyperf/SecurityMiddleware.php
 ├── config/security.php                   # 默认配置（每项均有注释说明）
-├── tests/                                # 402 个测试、978 条断言
+├── tests/                                # 427 个测试、1041 条断言
 │   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 特性
 │   ├── Detector/                         #   全检测器回归 + 边界用例
+│   ├── Middleware/                       #   四个框架适配器端到端
 │   └── Middleware/                       #   四个适配器
 ├── docs/                                 # 设计文档、代码评审报告、测试报告
 ├── scripts/release.sh                    # 发版脚本
@@ -477,7 +480,7 @@ HTTP Request
   │
   ▼
 ┌─────────────────┐
-│ Middleware Layer │  从框架 Request 提取 GET/POST/COOKIE/FILES → 扁平化 key-value
+│ Middleware Layer │  从框架 Request 提取 GET/POST/COOKIE/FILES → 扁平化 key-value（同名跨来源不丢弃）
 │ (4 adapters)    │  调用 SecurityGuard::guard()
 └────────┬────────┘
          │
@@ -589,6 +592,7 @@ interface StorageInterface {
 **5. 框架适配策略**
 
 - 中间件层唯一职责：从框架 Request 提取数据 → 调用 SecurityGuard
+- **同名参数跨来源不互相覆盖**：四个框架读取同名参数的优先级各不相同（Laravel 体优先于查询串、Hyperf 反之、Webman POST 优先于 GET），没有一种顺序能穷尽应用自身的读法。`SecurityGuard::mergeRequestSources()` 让最后一个来源持有裸名（与 `array_merge()` 一致，日志字段与 `whitelist_fields` 配置不受影响），被顶掉的值以 `_<来源>.<名>` 一并送检 —— 与 `_server.REMOTE_ADDR` 同一套命名，全程只增不减
 - 核心检测逻辑与框架零耦合，仅依赖 PHP 8.0 标准库
 - Laravel 通过 `extra.laravel.providers` 自动发现
 - Webman/ThinkPHP/Hyperf 手动在中间件配置中注册
@@ -660,7 +664,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (402 tests, 978 assertions)
+OK (427 tests, 1041 assertions)
 ```
 
 ## License

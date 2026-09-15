@@ -409,4 +409,111 @@ class SecurityGuardTest extends TestCase
         ]);
         $this->assertEmpty($threats, 'Top-level whitelisted field should be skipped');
     }
+
+    /**
+     * The $_FILES array shape only exists *before* flattenData() runs. Inside
+     * guard() the detector sees `avatar.name` / `avatar.name.0` instead, so both
+     * upload checks silently matched nothing until the detector re-paired them.
+     * Direct-call detector tests cannot catch this — only the guard() path can.
+     */
+    public function testFlattenedUploadShapesAreStillDetected(): void
+    {
+        SecurityGuard::init($this->config);
+
+        foreach ([
+            'single' => ['name' => 'evil.php', 'tmp_name' => '/tmp/phpXXXX'],
+            'multi'  => ['name' => ['evil.php'], 'tmp_name' => ['/tmp/phpXXXX']],
+        ] as $shape => $file) {
+            $threats = SecurityGuard::guard(['avatar' => $file]);
+
+            $this->assertNotEmpty($threats, "{$shape}-file upload must still be scanned inside guard()");
+            $this->assertSame('upload', $threats[0]->type, $shape);
+        }
+    }
+
+    // ───────── Request source merging (SecurityGuard::mergeRequestSources) ─────────
+    // The last source owns the bare name, exactly as array_merge() left it, so
+    // existing log fields, configs and whitelist entries keep working; whatever
+    // that displaces survives under `_<source>.<name>` — the naming the threat
+    // list already uses for `_server.REMOTE_ADDR`. Nothing is dropped.
+
+    public function testMergeRequestSourcesKeepsShadowedValue(): void
+    {
+        SecurityGuard::init($this->config);
+
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => ['evil' => '<script>alert(1)</script>'],
+            'get'    => ['evil' => '1'],
+        ]);
+
+        $this->assertSame('1', $data['evil'], 'The last source owns the bare name');
+        $this->assertSame(
+            '<script>alert(1)</script>',
+            $data['_cookie.evil'],
+            'The shadowed cookie value must survive for the detectors'
+        );
+    }
+
+    public function testMergedShadowedPayloadIsStillDetected(): void
+    {
+        SecurityGuard::init($this->config);
+
+        $threats = SecurityGuard::guard(SecurityGuard::mergeRequestSources([
+            'cookie' => ['evil' => '<script>alert(1)</script>'],
+            'get'    => ['evil' => '1'],
+        ]));
+
+        $this->assertNotEmpty($threats, 'A payload shadowed by a later source must still be scanned');
+    }
+
+    public function testMergeRequestSourcesDoesNotDuplicateIdenticalValues(): void
+    {
+        SecurityGuard::init($this->config);
+
+        $data = SecurityGuard::mergeRequestSources([
+            'get'  => ['q' => 'same'],
+            'post' => ['q' => 'same'],
+        ]);
+
+        $this->assertSame(['q' => 'same'], $data, 'Identical values lose nothing, so no second copy is kept');
+    }
+
+    public function testMergeRequestSourcesKeepsShadowedFileEntry(): void
+    {
+        SecurityGuard::init($this->config);
+
+        $data = SecurityGuard::mergeRequestSources([
+            'get'  => ['avatar' => '1'],
+            'file' => ['avatar' => ['name' => 'a.jpg', 'tmp_name' => '/tmp/phpXXXX']],
+        ]);
+
+        $this->assertSame(
+            ['name' => 'a.jpg', 'tmp_name' => '/tmp/phpXXXX'],
+            $data['avatar'],
+            'The file loop used to assign last, so the file entry still owns the bare name'
+        );
+        $this->assertSame(
+            '1',
+            $data['_get.avatar'],
+            'The value the file entry used to overwrite must survive — the third instance of the same shape'
+        );
+    }
+
+    public function testMergeRequestSourcesWhitelistedNameIsExemptFromEverySource(): void
+    {
+        $this->config['whitelist_fields'][] = 'evil';
+        SecurityGuard::init($this->config);
+
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => ['evil' => '<script>alert(1)</script>'],
+            'get'    => ['evil' => '1'],
+        ]);
+
+        $this->assertSame(
+            ['evil' => '1'],
+            $data,
+            'whitelist_fields is a statement about the name, not about which source carried it'
+        );
+        $this->assertSame([], SecurityGuard::guard($data), 'Whitelisted name stays skipped');
+    }
 }

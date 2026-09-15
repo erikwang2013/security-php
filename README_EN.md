@@ -80,6 +80,8 @@ Security PHP is a lightweight PHP security middleware that detects common web at
 | `upload` | Malicious file upload — extension whitelist + PHP tag (`<?php`, `<?=`) content scanning |
 | `data_leak` | Sensitive data exposure — credit card numbers, AWS access keys, private key headers, DB connection strings, API tokens, JWT secrets |
 
+> `upload`'s content check matches `<?php` / `<?=` within the first 1MB of the file and **does not consult the extension whitelist** — archives, Office documents and text files that merely contain a PHP snippet are all flagged `critical`. That is the deliberate trade-off against bypasses. If your application legitimately accepts such uploads, the only lever is widening `detectors.upload.mode` for the whole detector (the extension check widens with it).
+
 ---
 
 ## Installation
@@ -457,9 +459,10 @@ security-php/
 │   ├── Thinkphp/SecurityMiddleware.php
 │   └── Hyperf/SecurityMiddleware.php
 ├── config/security.php                   # Default configuration (every option commented)
-├── tests/                                # 402 tests, 978 assertions
+├── tests/                                # 427 tests, 1041 assertions
 │   ├── Core/                             #   Facade / chain / storage / logger / identity / features
 │   ├── Detector/                         #   Full detector regression + edge cases
+│   ├── Middleware/                       #   End-to-end for all four framework adapters
 │   └── Middleware/                       #   All four adapters
 ├── docs/                                 # Design docs, code review reports, test reports
 ├── scripts/release.sh                    # Release script
@@ -474,7 +477,7 @@ HTTP Request
   │
   ▼
 ┌─────────────────┐
-│ Middleware Layer │  Extract GET/POST/COOKIE/FILES from framework Request → flatten to key-value
+│ Middleware Layer │  Extract GET/POST/COOKIE/FILES from framework Request → flatten to key-value (same name across sources is never dropped)
 │ (4 adapters)    │  Invoke SecurityGuard::guard()
 └────────┬────────┘
          │
@@ -584,6 +587,7 @@ interface StorageInterface {
 **5. Framework Adapter Strategy**
 
 - Middleware layer has a single responsibility: extract data from framework Request → invoke SecurityGuard
+- **A name carried by two sources is never overwritten wholesale**: the four frameworks disagree on precedence (Laravel body-over-query, Hyperf query-over-body, Webman POST-over-GET) and no single order covers every way an app can read the same name. `SecurityGuard::mergeRequestSources()` lets the last source keep the bare name (matching `array_merge()`, so log fields and `whitelist_fields` config stay unchanged) while whatever it displaces is scanned under `_<source>.<name>` — the naming already used for `_server.REMOTE_ADDR`. Purely additive.
 - Core detection logic is zero-dependency, framework-agnostic, requires only PHP 8.0 standard library
 - Laravel auto-discovered via `extra.laravel.providers`
 - Webman/ThinkPHP/Hyperf registered manually in middleware config
@@ -654,7 +658,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (402 tests, 978 assertions)
+OK (427 tests, 1041 assertions)
 ```
 
 ## License

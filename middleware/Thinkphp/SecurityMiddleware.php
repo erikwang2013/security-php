@@ -31,22 +31,23 @@ class SecurityMiddleware
         }
 
         $cookies = $request->cookie() ?? [];
-        $data = array_merge(
-            $cookies,
-            $request->param() ?? [],
-        );
 
-        $files = $request->file();
-        if (!empty($files)) {
-            foreach ($files as $key => $file) {
-                if ($file instanceof \think\File) {
-                    $data[$key] = [
-                        'name'     => $file->getOriginalName(),
-                        'tmp_name' => $file->getPathname(),
-                    ];
-                }
+        $files = [];
+        foreach ($request->file() ?? [] as $key => $file) {
+            if ($file instanceof \think\File) {
+                $files[$key] = [
+                    'name'     => $file->getOriginalName(),
+                    'tmp_name' => $file->getPathname(),
+                ];
             }
         }
+
+        // Every source keeps its value in the scan even when the names collide.
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => $cookies,
+            'param'  => $request->param() ?? [],
+            'file'   => $files,
+        ]);
 
         $threats = SecurityGuard::guard($data, [
             'ip'              => $request->ip() ?? '0.0.0.0',

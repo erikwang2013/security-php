@@ -32,25 +32,29 @@ class SecurityMiddleware implements MiddlewareInterface
         }
 
         $cookies = $request->cookie() ?? [];
-        $data = array_merge(
-            $cookies,
-            $request->get() ?? [],
-            $request->post() ?? [],
-        );
 
+        $files = [];
         foreach ($request->file() ?? [] as $key => $file) {
             if ($file instanceof \Webman\Http\UploadFile) {
-                $data[$key] = [
+                $files[$key] = [
                     'name'     => $file->getUploadName() ?? '',
                     'tmp_name' => $file->getUploadTmpPath() ?? '',
                 ];
             } elseif (is_array($file) && isset($file['tmp_name'], $file['name'])) {
-                $data[$key] = [
+                $files[$key] = [
                     'name'     => $file['name'],
                     'tmp_name' => $file['tmp_name'],
                 ];
             }
         }
+
+        // Every source keeps its value in the scan even when the names collide.
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => $cookies,
+            'get'    => $request->get() ?? [],
+            'post'   => $request->post() ?? [],
+            'file'   => $files,
+        ]);
 
         $threats = SecurityGuard::guard($data, [
             'ip'              => $request->getRealIp() ?? '0.0.0.0',

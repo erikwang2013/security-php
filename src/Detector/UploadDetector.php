@@ -104,6 +104,33 @@ class UploadDetector implements DetectorInterface
             }
         }
 
+        return array_merge($this->flattenUploadPairs($data), $flat);
+    }
+
+    /**
+     * Re-pair the flat "field.name" / "field.tmp_name" keys that flattenData()
+     * produces before any detector runs. Without this the array shape above
+     * never matches inside the guard() pipeline, so no upload was ever blocked
+     * there — extension and content checks alike were dead.
+     *
+     * Multi-file entries arrive as "field.name.0" / "field.tmp_name.0".
+     *
+     * @return array<string, array{name: string, tmp_name: string}>
+     */
+    private function flattenUploadPairs(array $data): array
+    {
+        $flat = [];
+        foreach ($data as $key => $value) {
+            if (!is_string($value) || !preg_match('/^(.+)\.name((?:\.\d+)*)$/', (string) $key, $m)) {
+                continue;
+            }
+            $tmpName = $data[$m[1] . '.tmp_name' . $m[2]] ?? null;
+            if (!is_string($tmpName) || $tmpName === '') {
+                continue;
+            }
+            $flat[$m[1] . $m[2]] = ['name' => $value, 'tmp_name' => $tmpName];
+        }
+
         return $flat;
     }
 }

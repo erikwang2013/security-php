@@ -17,11 +17,14 @@ class SecurityMiddleware
     public function handle(Request $request, Closure $next)
     {
         $cookies = $request->cookie() ?? [];
-        $data = array_merge(
-            $cookies,
-            $request->all(),
-            $this->extractFiles($request),
-        );
+        // `all()` has already collapsed query against body on Laravel's own
+        // precedence; this keeps cookie and file values from being dropped on
+        // top of that. See SecurityGuard::mergeRequestSources().
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => $cookies,
+            'all'    => $request->all(),
+            'file'   => $this->extractFiles($request),
+        ]);
 
         $threats = SecurityGuard::guard($data, [
             'ip'              => $request->server('REMOTE_ADDR', '0.0.0.0'),

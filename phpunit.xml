@@ -12,6 +12,9 @@
         <testsuite name="Core">
             <directory>tests/Core</directory>
         </testsuite>
+        <testsuite name="Middleware">
+            <directory>tests/Middleware</directory>
+        </testsuite>
     </testsuites>
     <php>
         <ini name="error_reporting" value="E_ALL"/>

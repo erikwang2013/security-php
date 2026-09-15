@@ -29,20 +29,21 @@ if (!function_exists('security_scan_current_request')) {
      */
     function security_scan_current_request(): array
     {
-        $data = array_merge(
-            $_COOKIE,
-            $_GET,
-            $_POST,
-        );
-
-        if (!empty($_FILES)) {
-            foreach ($_FILES as $key => $file) {
-                $data[$key] = [
-                    'name'     => $file['name'] ?? '',
-                    'tmp_name' => $file['tmp_name'] ?? '',
-                ];
-            }
+        $files = [];
+        foreach ($_FILES as $key => $file) {
+            $files[$key] = [
+                'name'     => $file['name'] ?? '',
+                'tmp_name' => $file['tmp_name'] ?? '',
+            ];
         }
+
+        // Every source keeps its value in the scan even when the names collide.
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => $_COOKIE,
+            'get'    => $_GET,
+            'post'   => $_POST,
+            'file'   => $files,
+        ]);
 
         // Apache+CGI keeps Authorization out of $_SERVER; getallheaders() is the
         // documented way back to it. Every other header arrives as HTTP_*.

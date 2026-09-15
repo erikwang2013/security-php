@@ -33,21 +33,25 @@ class SecurityMiddleware implements MiddlewareInterface
         }
 
         $cookies = $request->getCookieParams() ?? [];
-        $data = array_merge(
-            $cookies,
-            $request->getParsedBody() ?? [],
-            $request->getQueryParams() ?? [],
-        );
 
-        $uploadedFiles = $request->getUploadedFiles();
-        foreach ($uploadedFiles as $key => $file) {
+        $files = [];
+        foreach ($request->getUploadedFiles() as $key => $file) {
             if ($file instanceof \Hyperf\HttpMessage\Upload\UploadedFile) {
-                $data[$key] = [
+                $files[$key] = [
                     'name'     => $file->getClientFilename() ?? '',
                     'tmp_name' => $file->getStream()->getMetadata('uri') ?? '',
                 ];
             }
         }
+
+        // Every source keeps its value in the scan even when the names collide.
+        // Order is Hyperf's own precedence (query over body), unchanged.
+        $data = SecurityGuard::mergeRequestSources([
+            'cookie' => $cookies,
+            'body'   => $request->getParsedBody() ?? [],
+            'query'  => $request->getQueryParams() ?? [],
+            'file'   => $files,
+        ]);
 
         $serverParams = $request->getServerParams();
 

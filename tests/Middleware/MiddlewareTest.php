@@ -174,14 +174,14 @@ namespace Erikwang2013\Security\Tests\Middleware {
 
         public function testHyperfMiddlewareBlocksAttack(): void
         {
-            $request = new \HyperfTestRequest(
+            $request = new HyperfTestRequest(
                 body: ['comment' => '<script>alert(1)</script>'],
                 server: ['remote_addr' => '203.0.113.40'],
                 method: 'POST',
             );
             $middleware = new HyperfMiddleware();
 
-            $handler = new \HyperfTestHandler();
+            $handler = new HyperfTestHandler();
             $response = $middleware->process($request, $handler);
 
             $this->assertFalse($handler->called, 'Blocked request must not reach the handler');
@@ -191,18 +191,77 @@ namespace Erikwang2013\Security\Tests\Middleware {
 
         public function testHyperfMiddlewarePassesSafeRequest(): void
         {
-            $request = new \HyperfTestRequest(
+            $request = new HyperfTestRequest(
                 body: ['name' => 'John'],
                 server: ['remote_addr' => '203.0.113.41'],
             );
             $middleware = new HyperfMiddleware();
 
-            $handler = new \HyperfTestHandler();
+            $handler = new HyperfTestHandler();
             $response = $middleware->process($request, $handler);
 
             $this->assertTrue($handler->called);
             $this->assertSame(200, $response->getStatusCode());
             $this->assertSame('nosniff', $response->getHeaders()['X-Content-Type-Options']);
+        }
+
+        // ──────── Same-named fields across sources must all be scanned ────────
+        // array_merge() kept one value per name and the dropped one never
+        // reached a detector. Every framework prefers a different source, so
+        // a shadowed payload was a hole in the whole regex detector family.
+
+        public function testWebmanMiddlewareScansCookieShadowedByQuery(): void
+        {
+            $request = new \Webman\Http\Request(
+                get: ['evil' => '1'],
+                cookies: ['evil' => '<script>alert(1)</script>'],
+                realIp: '203.0.113.23',
+            );
+
+            $response = (new WebmanMiddleware())->process($request, fn () => new \Webman\Http\Response(200, [], 'NEXT'));
+
+            $this->assertSame(403, $response->getStatusCode(), 'Cookie payload shadowed by ?evil=1 must still be scanned');
+        }
+
+        public function testLaravelMiddlewareScansCookieShadowedByInput(): void
+        {
+            $request = new \Illuminate\Http\Request(
+                input: ['evil' => '1'],
+                cookies: ['evil' => '<script>alert(1)</script>'],
+                server: ['REMOTE_ADDR' => '203.0.113.13'],
+            );
+
+            $response = (new LaravelMiddleware())->handle($request, fn () => new FakeResponse('', 200, []));
+
+            $this->assertSame(403, $response->getStatusCode(), 'Cookie payload shadowed by a same-named body field must still be scanned');
+        }
+
+        public function testThinkphpMiddlewareScansCookieShadowedByParam(): void
+        {
+            $request = new \think\Request(
+                param: ['evil' => '1'],
+                cookies: ['evil' => '<script>alert(1)</script>'],
+                ip: '203.0.113.32',
+            );
+
+            $response = (new ThinkphpMiddleware())->handle($request, fn () => new \think\Response('NEXT', '', 200));
+
+            $this->assertSame(403, $response->getCode(), 'Cookie payload shadowed by a same-named param must still be scanned');
+        }
+
+        public function testHyperfMiddlewareScansBodyShadowedByQuery(): void
+        {
+            // Hyperf's own precedence puts query over body — the opposite of
+            // $_REQUEST — and that is the value this adapter keeps bare.
+            $request = new HyperfTestRequest(
+                body: ['evil' => '<script>alert(1)</script>'],
+                query: ['evil' => '1'],
+                server: ['remote_addr' => '203.0.113.42'],
+            );
+
+            $response = (new HyperfMiddleware())->process($request, new HyperfTestHandler());
+
+            $this->assertSame(403, $response->getStatusCode(), 'Body payload shadowed by ?evil=1 must still be scanned');
         }
     }
 

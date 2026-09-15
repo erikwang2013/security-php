@@ -222,6 +222,31 @@ class HelpersTest extends TestCase
         $this->assertSame('xss', $threats[0]->type);
     }
 
+    public function testShadowedCookieIsStillScannedFromSuperglobals(): void
+    {
+        $_COOKIE = ['evil' => '<script>alert(1)</script>'];
+        $_GET = ['evil' => '1'];
+        $_POST = [];
+        $_FILES = [];
+        $_SERVER = [
+            'REMOTE_ADDR' => '203.0.113.9',
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/x',
+        ];
+
+        try {
+            $threats = security_scan_current_request();
+        } finally {
+            $_COOKIE = [];
+            $_GET = [];
+            $_POST = [];
+            $_FILES = [];
+            $_SERVER = [];
+        }
+
+        $this->assertNotEmpty($threats, 'A cookie payload shadowed by ?evil=1 must still be scanned');
+    }
+
     public function testSecurityScanCurrentRequestSafe(): void
     {
         $_GET = ['q' => 'hello'];
