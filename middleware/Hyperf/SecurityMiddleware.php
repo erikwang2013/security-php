@@ -32,8 +32,9 @@ class SecurityMiddleware implements MiddlewareInterface
             }
         }
 
+        $cookies = $request->getCookieParams() ?? [];
         $data = array_merge(
-            $request->getCookieParams() ?? [],
+            $cookies,
             $request->getParsedBody() ?? [],
             $request->getQueryParams() ?? [],
         );
@@ -60,17 +61,39 @@ class SecurityMiddleware implements MiddlewareInterface
             'host'            => $request->getHeaderLine('Host'),
             'x_forwarded_for' => $request->getHeaderLine('X-Forwarded-For'),
             'transfer_encoding' => $request->getHeaderLine('Transfer-Encoding'),
+            // Session identity comes from the request, not from $data: the
+            // merge above puts cookies first, so a same-named query/post field
+            // would otherwise shadow the real cookie.
+            'cookies'         => $cookies,
+            'user_agent'      => $request->getHeaderLine('User-Agent'),
+            // Keep these names in sync with identity.session.headers
+            'headers'         => [
+                'authorization' => $request->getHeaderLine('Authorization'),
+                'x-token'       => $request->getHeaderLine('X-Token'),
+                'x-auth-token'  => $request->getHeaderLine('X-Auth-Token'),
+            ],
         ]);
+
+        $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
             $response = new \Hyperf\HttpMessage\Server\Response();
-            return $response
+            // PSR-7: withHeader() is immutable, so reassign on each iteration
+            $response = $response
                 ->withStatus($block['status'])
                 ->withHeader('Content-Type', 'text/plain; charset=utf-8')
                 ->withBody(new \Hyperf\HttpMessage\Stream\SwooleStream($block['message']));
+            foreach ($securityHeaders as $name => $value) {
+                $response = $response->withHeader($name, $value);
+            }
+            return $response;
         }
 
-        return $handler->handle($request);
+        $response = $handler->handle($request);
+        foreach ($securityHeaders as $name => $value) {
+            $response = $response->withHeader($name, $value);
+        }
+        return $response;
     }
 }

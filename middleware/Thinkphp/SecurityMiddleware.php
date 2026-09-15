@@ -30,8 +30,9 @@ class SecurityMiddleware
             }
         }
 
+        $cookies = $request->cookie() ?? [];
         $data = array_merge(
-            $request->cookie() ?? [],
+            $cookies,
             $request->param() ?? [],
         );
 
@@ -57,17 +58,36 @@ class SecurityMiddleware
             'host'            => $request->header('host', ''),
             'x_forwarded_for' => $request->header('x-forwarded-for', ''),
             'transfer_encoding' => $request->header('transfer-encoding', ''),
+            // Session identity comes from the request, not from $data: the
+            // merge above puts cookies first, so a same-named query/post field
+            // would otherwise shadow the real cookie.
+            'cookies'         => $cookies,
+            'user_agent'      => $request->header('user-agent', ''),
+            // Keep these names in sync with identity.session.headers
+            'headers'         => [
+                'authorization' => (string) $request->header('authorization', ''),
+                'x-token'       => (string) $request->header('x-token', ''),
+                'x-auth-token'  => (string) $request->header('x-auth-token', ''),
+            ],
         ]);
+
+        $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
+            // false disables ThinkPHP's htmlspecialchars, which would corrupt a
+            // CSP value containing single quotes
             return Response::create(
                 $block['message'],
                 'text/plain; charset=utf-8',
                 $block['status']
-            );
+            )->header($securityHeaders, false);
         }
 
-        return $next($request);
+        $response = $next($request);
+        if ($securityHeaders !== []) {
+            $response->header($securityHeaders, false);
+        }
+        return $response;
     }
 }

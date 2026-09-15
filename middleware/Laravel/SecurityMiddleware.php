@@ -16,8 +16,9 @@ class SecurityMiddleware
 {
     public function handle(Request $request, Closure $next)
     {
+        $cookies = $request->cookie() ?? [];
         $data = array_merge(
-            $request->cookie() ?? [],
+            $cookies,
             $request->all(),
             $this->extractFiles($request),
         );
@@ -32,18 +33,36 @@ class SecurityMiddleware
             'host'            => $request->header('Host', ''),
             'x_forwarded_for' => $request->header('X-Forwarded-For', ''),
             'transfer_encoding' => $request->header('Transfer-Encoding', ''),
+            // Session identity comes from the request, not from $data: the
+            // merge above puts cookies first, so a same-named query/post field
+            // would otherwise shadow the real cookie.
+            'cookies'         => $cookies,
+            'user_agent'      => $request->header('User-Agent', ''),
+            // Keep these names in sync with identity.session.headers
+            'headers'         => [
+                'authorization' => (string) $request->header('Authorization', ''),
+                'x-token'       => (string) $request->header('X-Token', ''),
+                'x-auth-token'  => (string) $request->header('X-Auth-Token', ''),
+            ],
         ]);
+
+        $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
             return response(
                 $block['message'],
                 $block['status'],
-                ['Content-Type' => 'text/plain; charset=utf-8']
+                array_merge(['Content-Type' => 'text/plain; charset=utf-8'], $securityHeaders)
             );
         }
 
-        return $next($request);
+        // Symfony Response: headers->set() mutates in place
+        $response = $next($request);
+        foreach ($securityHeaders as $name => $value) {
+            $response->headers->set($name, $value);
+        }
+        return $response;
     }
 
     private function extractFiles(Request $request): array

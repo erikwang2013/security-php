@@ -31,8 +31,9 @@ class SecurityMiddleware implements MiddlewareInterface
             }
         }
 
+        $cookies = $request->cookie() ?? [];
         $data = array_merge(
-            $request->cookie() ?? [],
+            $cookies,
             $request->get() ?? [],
             $request->post() ?? [],
         );
@@ -61,17 +62,35 @@ class SecurityMiddleware implements MiddlewareInterface
             'host'            => $request->header('host') ?? '',
             'x_forwarded_for' => $request->header('x-forwarded-for') ?? '',
             'transfer_encoding' => $request->header('transfer-encoding') ?? '',
+            // Session identity comes from the request, not from $data: the
+            // merge above puts cookies first, so a same-named query/post field
+            // would otherwise shadow the real cookie.
+            'cookies'         => $cookies,
+            'user_agent'      => $request->header('user-agent') ?? '',
+            // Keep these names in sync with identity.session.headers
+            'headers'         => [
+                'authorization' => (string) ($request->header('authorization') ?? ''),
+                'x-token'       => (string) ($request->header('x-token') ?? ''),
+                'x-auth-token'  => (string) ($request->header('x-auth-token') ?? ''),
+            ],
         ]);
+
+        $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
             return new Response(
                 $block['status'],
-                ['Content-Type' => 'text/plain; charset=utf-8'],
+                array_merge(['Content-Type' => 'text/plain; charset=utf-8'], $securityHeaders),
                 $block['message']
             );
         }
 
-        return $next($request);
+        // PSR-7: withHeader() is immutable, so reassign on each iteration
+        $response = $next($request);
+        foreach ($securityHeaders as $name => $value) {
+            $response = $response->withHeader($name, $value);
+        }
+        return $response;
     }
 }

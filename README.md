@@ -2,7 +2,7 @@
 
 > [English Documentation](README_EN.md)
 
-基于 PHP 的安全攻击检测插件，支持 31 种攻击类型检测，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架。
+基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架。
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -10,7 +10,7 @@ Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ## 项目说明
 
-Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。
+Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。在无状态的正则检测之外，`identity` 模块另提供**会话劫持 / 异地登录 / 数据篡改 / 登录暴力破解锁定**四类跨请求检测，Cookie 与会话 Token 登录都在覆盖范围内（见「身份维度检测」）。此外内置编码归一化预处理（对抗 URL 编码、全角字符、HTML 实体绕过）与安全响应头注入。
 
 ### 支持的攻击类型
 
@@ -63,6 +63,15 @@ Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配�
 | `jwt_attack` | JWT 攻击 — **结构解码分析**：`alg: none` 绕过、`kid` 路径遍历注入、空签名检测 |
 | `prototype_pollution` | JS 原型污染 — `__proto__`/`constructor` 键检测、`__defineGetter__`/`__defineSetter__` |
 
+#### 身份与完整性（需应用接入，见「身份维度检测」）
+
+| 检测器 | 说明 |
+|---|---|
+| `session_hijack` | 会话劫持 — 首次请求把会话标识绑定到指纹（UA + IP 网段），之后指纹变化即告警，返回 **401**。Cookie 与 `Authorization: Bearer` / `X-Token` 两种登录态共用一套逻辑 |
+| `unusual_login` | 异地登录 — 记录每个账号的常用登录地，出现新地点即告警，返回 **401** |
+| `data_tamper` | 数据篡改 — 校验受保护字段的 HMAC 签名，值被改动、签名被剥离/伪造/过期即告警，返回 **403** |
+| `login_lockout` | 登录暴力破解锁定 — 滑动窗口内失败次数达阈值即锁定账号，锁定期间直接返回 **429**，认证逻辑无需执行 |
+
 #### 文件与敏感数据
 
 | 检测器 | 说明 |
@@ -79,7 +88,7 @@ Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配�
 composer require erikwang2013/security-php
 ```
 
-要求 PHP >= 8.1。
+要求 PHP >= 8.0。
 
 ---
 
@@ -233,6 +242,24 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 'block_message'     => 'Request blocked by security policy',
 ```
 
+### 安全响应头
+
+```php
+'security_headers' => [
+    'enabled' => true,
+    'headers' => [
+        'X-Content-Type-Options'    => 'nosniff',   // 禁止浏览器 MIME 嗅探
+        'X-Frame-Options'           => 'SAMEORIGIN',// 防点击劫持：SAMEORIGIN 仅同源可嵌，DENY 完全禁止
+        'Referrer-Policy'           => 'strict-origin-when-cross-origin',
+        'Permissions-Policy'        => '',          // 例：geolocation=(), camera=(), microphone=()
+        'Content-Security-Policy'   => '',          // 例：default-src 'self'; script-src 'self'
+        'Strict-Transport-Security' => '',          // 例：max-age=31536000; includeSubDomains
+    ],
+],
+```
+
+取值为空字符串的头会被跳过，所以可以逐条按需开启。中间件在**正常响应与拦截响应**上都会注入这些头；手动调用场景可用 `SecurityGuard::securityHeaders()` 取出后自行写入。
+
 ### 日志配置
 
 ```php
@@ -266,6 +293,86 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 ```php
 'whitelist_fields' => ['_token', '_method', 'csrf_token'],
 ```
+
+### 编码归一化预处理
+
+```php
+'normalization' => [
+    'enabled'   => true,
+    'urldecode' => true, // 值含 % 时解码（含双重编码）
+    'fullwidth' => true, // 全角 ASCII 转半角
+    'entities'  => true, // 值含 &# 或 &amp; 时解 HTML 实体
+],
+```
+
+正则检测器只看原始值，攻击者把载荷编码一次（`%3Cscript%3E`）、双重编码（`%2527`），或换个形态（全角 `Ｓｅｌｅｃｔ`、HTML 实体 `&#60;script&#62;`）就能绕过。开启后，携带编码信号的值会额外解码一次，**解码结果与原值都参与扫描**，命中时日志 `detail` 标注 `[decoded:xxx]`。
+
+每种变体都先做廉价预检（值里没有 `%` 就绝不调用 `urldecode`），所以没有编码的请求不产生额外开销。**代价**：含 `%` 的合法文本（带 URL 的表单、搜索词）解码后可能新增命中，高误报检测器建议保持 `log` 模式。
+
+### 身份维度检测
+
+会话劫持 / 异地登录 / 数据篡改 / 登录暴力破解锁定共享 `identity` 配置块与 `storage`（File/Redis/Cache 均可，多机部署请用 Redis 或 Cache）：
+
+```php
+'identity' => [
+    'enabled' => true,
+    'session' => [
+        'cookie'  => 'laravel_session',                      // 会话 Cookie 名，留空则只用 Token
+        'headers' => ['authorization', 'x-token', 'x-auth-token'], // Token 来源，按序取第一个非空
+        'bind'    => ['ua', 'ip'],                           // 指纹因子，默认 UA + IP 网段
+        'ip_bits' => 24,                                     // IP 归一到的网段位数
+        'ttl'     => 7200,                                   // 空闲多久后视为新会话、重新绑定
+    ],
+    'login' => [
+        'ttl'        => 86400, // 登录地记忆时长
+        'max_points' => 10,    // 每账号最多记住几个地点，超出按最久未用淘汰
+
+        'lockout' => [             // 暴力破解锁定
+            'max_failures'   => 5, // 窗口内累计达到该次数即锁定
+            'window_seconds' => 900, // 失败计数有效期（秒）
+            'lock_seconds'   => 900, // 锁定时长（秒）
+            'include_ip'     => false, // true = 按 user_id + IP 分别计数，把锁定收敛到攻击者来源
+        ],
+    ],
+    'tamper' => [
+        'token_field'      => '_security_sig', // 携带签名的字段名
+        'protected_fields' => [],              // 受保护字段，点号路径如 order.price
+        'ttl'              => 1800,            // 签名有效期（秒）
+    ],
+],
+
+'signing_key' => getenv('SECURITY_SIGNING_KEY') ?: '', // 留空 = 关闭数据篡改检测
+```
+
+**Token 登录**：Cookie 会话与 Token 会话走同一套代码，只有"会话标识从哪来"不同。`Authorization: Bearer <token>`（`bearer` 大小写不敏感）与 `X-Token` / `X-Auth-Token` 自定义头均按 `session.headers` 顺序提取，Cookie 命中时优先。**API / 小程序 / App 等没有 Cookie 的场景无需额外配置即可覆盖**；配 `session.cookie => ''` 可完全关闭 Cookie 路径。
+
+**三个接入点**（不接入则对应检测全程静默，零误报）：
+
+```php
+// 1. 登录 / 签发 token 成功后调用，Cookie 登录与 token 登录写法相同
+//    第二参可选城市字符串（应用已有 GeoIP 时传），缺省用 IP 网段
+$threat = SecurityGuard::recordLogin($userId, '杭州');
+if ($threat !== null) { /* 新地点登录，可要求二次验证 */ }
+
+// 2. 渲染表单时下发签名，提交时由中间件自动校验
+$token = SecurityGuard::signFields(['order.price' => $price, 'order.qty' => $qty]);
+// <input type="hidden" name="_security_sig" value="<?= $token ?>">
+```
+
+**暴力破解锁定另需在认证分支接入**（失败发生在上游认证逻辑里，中间件看不到）：
+
+```php
+// 3. 认证前先拦一道：锁定中的账号直接跳过凭据校验，不必再回答"密码错误"
+if (SecurityGuard::isLockedOut($userId, $ip)) {
+    return response('Too Many Requests', 429);
+}
+
+// 4. 密码错误的失败分支：记一次失败，达到阈值时返回威胁
+$threat = SecurityGuard::recordFailedLogin($userId, $ip);
+if ($threat !== null) { /* 本次尝试已触发锁定，账号将被拒绝 */ }
+```
+
+**已知局限**：① 首个登录者即基线 —— 账号首次登录不告警，攻击者若抢在真实用户之前登录，其地点会成为"常用地点"；② 会话同理，攻击者若先于真实用户使用同一 Token/会话，会先建立基线；③ 密钥走 `SECURITY_SIGNING_KEY` 环境变量，切勿写进版本库；④ `session.cookie` 与 `session.headers` 需与 `middleware/*/SecurityMiddleware.php` 中的取值保持一致；⑤ `include_ip => false`（默认）时锁定以**账号**为单位，攻击者用任意密码反复刷某账号即可将其锁死 —— 这也是 `lock_seconds` 默认偏短的原因，需要更严格时改开 `include_ip`，代价是攻击者轮换 IP 即可重置计数。
 
 ### IP 攻击升级黑名单
 
@@ -310,6 +417,51 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 
 ## 设计说明
 
+### 项目结构
+
+```
+security-php/
+├── src/                                  # 核心库（与框架零耦合）
+│   ├── SecurityGuard.php                 # 入口门面：init / guard / blockDecision / 身份检测转发
+│   ├── DetectorChain.php                 # 检测器链（策略模式），按 priority 顺序执行
+│   ├── DetectorInterface.php             # 检测器契约
+│   ├── NormalizationScanner.php          # 编码归一化：解码变体重扫
+│   ├── IpBlacklist.php                   # IP 攻击升级黑名单
+│   ├── Logger.php                        # 攻击日志：原子写入 / 轮转 / 去重 / CRLF 防护
+│   ├── ThreatResult.php                  # 威胁结果值对象
+│   ├── helpers.php                       # 全局函数 security_guard() / security_scan_current_request()
+│   ├── Composer/Installer.php            # composer-plugin：安装时发布配置
+│   ├── Detector/                         # 31 个无状态检测器
+│   │   ├── AbstractRegexDetector.php     #   正则基类（25 个检测器继承它）
+│   │   └── ...                           #   Xss / SqlInjection / Ssrf / Upload / JwtAttack ...
+│   ├── Identity/                         # 4 项跨请求身份校验（链外，需应用接入）
+│   │   ├── IdentityGuard.php             #   统一门面，威胁并入主结果
+│   │   ├── SessionFingerprint.php        #   会话劫持：会话标识 → 指纹基线
+│   │   ├── LoginBaseline.php             #   异地登录：账号 → 常用地点
+│   │   ├── LoginLockout.php              #   暴力破解锁定：失败计数 → 锁定
+│   │   ├── FieldSigner.php               #   数据篡改：受保护字段 HMAC 签名
+│   │   └── IpPrefix.php                  #   IP 网段归一化（IPv4 / IPv6）
+│   └── Storage/                          # 可插拔持久化抽象
+│       ├── StorageInterface.php          #   共用契约，IdentityGuard 与 IpBlacklist 共享同一实例
+│       ├── FileStorage.php               #   单 JSON 文件 + flock 原子写入
+│       ├── RedisStorage.php              #   外部注入 \Redis 实例
+│       └── CacheStorage.php              #   每 key 独立文件
+├── middleware/                           # 框架适配层：提取请求 → 调 SecurityGuard → 注入响应头
+│   ├── Laravel/                          #   SecurityMiddleware + SecurityServiceProvider（自动发现）
+│   ├── Webman/SecurityMiddleware.php     #   与下列三个适配器职责一致
+│   ├── Thinkphp/SecurityMiddleware.php
+│   └── Hyperf/SecurityMiddleware.php
+├── config/security.php                   # 默认配置（每项均有注释说明）
+├── tests/                                # 402 个测试、978 条断言
+│   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 特性
+│   ├── Detector/                         #   全检测器回归 + 边界用例
+│   └── Middleware/                       #   四个适配器
+├── docs/                                 # 设计文档、代码评审报告、测试报告
+├── scripts/release.sh                    # 发版脚本
+├── phpunit.xml
+└── composer.json
+```
+
 ### 架构
 
 ```
@@ -324,41 +476,44 @@ HTTP Request
          ▼
 ┌─────────────────┐
 │  SecurityGuard   │  入口门面：IP 白名单 → IP 黑名单检查 → 字段白名单 → 嵌套扁平化 → 正则超时保护 → 扫描
+│                 │  身份检查：正则链之外再跑 IdentityGuard，威胁合并进同一份结果
 │                 │  攻击记录：扫描后若发现威胁，自动记录 IP 到 IpBlacklist
 └────────┬────────┘
          │
-    ┌────┴────┐
-    ▼         ▼
-┌────────┐ ┌──────────────┐
-│IpBlacklist│ │ DetectorChain │  优先级排序 → 执行所有检测器 → 收集全部匹配（不再仅返回首个匹配）
-│         │ └──────┬───────┘
-│  ┌────┐ │        │
-│  │Storage││        │
-│  │File/ ││        │
-│  │Redis/││        │
-│  │Cache ││        │
-└──┴────┴─┘        │
-                  ▼
-         ┌─────────────────┐
-         │  31 Detectors    │  23 个继承 AbstractRegexDetector，仅定义 name() + patterns() + priority()
-         │  (strategy)      │  8 个自定义 detect()：Upload（文件内容扫描）、
-         │                 │  JwtAttack（JWT 头解码）、PrototypePollution（键名检查）、
-         │                 │  HttpMethod/BodySize/ContentType/CsrfOrigin（通过 $data 解耦 $_SERVER）
-         └────────┬────────┘
-                  │
-                  ▼
+    ┌────┴─────┬──────────┐
+    ▼          ▼          ▼
+┌────────┐ ┌──────────────┐ ┌───────────────┐
+│IpBlacklist│ │ DetectorChain │ │ IdentityGuard │  跨请求状态检测（不在正则链里）：
+│         │ │               │ │               │  会话劫持 / 异地登录 / 数据篡改 / 暴力破解锁定
+│  ┌────┐ │ └──────┬───────┘ └───────┬───────┘
+│  │Storage││        │                 │
+│  │File/ ││   ← IpBlacklist 与 IdentityGuard 共用同一个 Storage 实例
+│  │Redis/││        │                 │
+│  │Cache ││        │                 │
+└──┴────┴─┘        ▼                 │
+         ┌─────────────────┐          │
+         │  31 Detectors    │  25 个继承 AbstractRegexDetector，仅定义 name() + patterns() + priority()
+         │  (strategy)      │  6 个自定义 detect()：Upload（文件内容扫描）、
+         │                 │  JwtAttack（JWT 头解码）、HttpMethod/BodySize/ContentType/
+         │                 │  CsrfOrigin（通过 $data 解耦 $_SERVER）
+         └────────┬────────┘          │
+                  │                   │
+                  └─────────┬─────────┘
+                            ▼
          ┌─────────────────┐
          │     Logger       │  攻击日志：fopen+flock 原子写入、按大小轮转、CRLF 注入防护、去重
          └─────────────────┘
 ```
 
+> 图里的 **31 Detectors** 是 `DetectorChain` 里的正则检测器；身份四项不算在内 —— 它们需要跨请求状态，因此放在链外，由 `IdentityGuard` 单独执行后并入同一份威胁列表（共用日志、去重与 block/log 模式）。`ip_blacklist` 同样不在链内，它由 `SecurityGuard` 直接调用。
+
 ### 关键设计决策
 
 **1. 抽象检测器基类**
 
-31 个检测器中的 23 个继承 `AbstractRegexDetector`，每个仅需定义 `name()` 和 `patterns()` 方法（约 15 行代码）。消除了 ~500 行重复的扫描循环代码。修改扫描逻辑（如新增嵌套数组支持）只需改动基类一处。
+31 个检测器中的 25 个继承 `AbstractRegexDetector`，每个仅需定义 `name()` 和 `patterns()` 方法（约 15 行代码）。消除了 ~500 行重复的扫描循环代码。修改扫描逻辑（如新增嵌套数组支持）只需改动基类一处。
 
-其余 8 个检测器直接实现 `DetectorInterface` 并自定义 `detect()` 方法：`UploadDetector`（文件扩展名+内容扫描）、`JwtAttackDetector`（JWT 结构解码分析）、`PrototypePollutionDetector`（对象键名检查）、`HttpMethodDetector` / `BodySizeDetector` / `ContentTypeDetector` / `CsrfOriginDetector`（$_SERVER 超全局变量检查）。
+其余 6 个检测器直接实现 `DetectorInterface` 并自定义 `detect()` 方法：`UploadDetector`（文件扩展名+内容扫描）、`JwtAttackDetector`（JWT 结构解码分析）、`HttpMethodDetector` / `BodySizeDetector` / `ContentTypeDetector` / `CsrfOriginDetector`（$_SERVER 超全局变量检查）。
 
 ```php
 class XssDetector extends AbstractRegexDetector
@@ -398,11 +553,16 @@ class XssDetector extends AbstractRegexDetector
 | 敏感数据掩码 | DataLeakDetector | AWS Key 等敏感信息在日志中显示为 `AKIAIOS***XAMPLE` |
 | IP 白名单 CIDR | SecurityGuard | 支持 IPv4 ip2long + 位掩码、IPv6 inet_pton + 二进制匹配 |
 | IP 攻击升级黑名单 | IpBlacklist | 窗口内攻击计数、自动封禁，可插拔存储后端（File/Redis/Cache），flock 原子写入（File 模式） |
+| 凭据脱敏 | IdentityGuard | 会话 ID / token 只以 `sha256` 哈希落盘，日志里只出现 `#` + 哈希前 8 位，明文永不写存储与日志 |
+| 签名密钥不落库 | config | `signing_key` 取自 `getenv('SECURITY_SIGNING_KEY')`，密钥不进版本库；未配置时篡改检测静默禁用 |
+| 编码归一化扫描 | NormalizationScanner | URL / 双重编码、全角、HTML 实体各解一次后重扫，命中标注 `[decoded:xxx]`；廉价预检确保无编码请求零开销 |
+| 账号哈希落盘 | LoginLockout | 锁定记录的 key 与威胁 payload 都只含 `sha256(user_id)`，明文账号不写存储与日志 |
+| 安全响应头 | SecurityGuard::securityHeaders() | 正常响应与拦截响应都注入 nosniff / X-Frame-Options 等头，值为空字符串的头自动跳过 |
 | 默认 log 模式 | config | 高误报检测器默认仅记录不拦截 |
 
 **4. 可插拔存储抽象**
 
-`IpBlacklist` 通过 `StorageInterface` 与持久化层解耦。`SecurityGuard::createStorage()` 工厂根据 `storage.type` 配置创建对应适配器注入：
+`IpBlacklist` 与 `IdentityGuard` 通过 `StorageInterface` 与持久化层解耦。`SecurityGuard::createStorage()` 工厂根据 `storage.type` 配置创建对应适配器注入：
 
 ```php
 interface StorageInterface {
@@ -421,7 +581,7 @@ interface StorageInterface {
 **5. 框架适配策略**
 
 - 中间件层唯一职责：从框架 Request 提取数据 → 调用 SecurityGuard
-- 核心检测逻辑与框架零耦合，仅依赖 PHP 8.1 标准库
+- 核心检测逻辑与框架零耦合，仅依赖 PHP 8.0 标准库
 - Laravel 通过 `extra.laravel.providers` 自动发现
 - Webman/ThinkPHP/Hyperf 手动在中间件配置中注册
 - 全局函数 `security_guard()` 支持无框架项目
@@ -479,7 +639,7 @@ class MyCustomDetector implements DetectorInterface
 
 ### 依赖
 
-- PHP >= 8.1
+- PHP >= 8.0
 - 零外部依赖
 
 ---
@@ -492,7 +652,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (192 tests, 578 assertions)
+OK (402 tests, 978 assertions)
 ```
 
 ## License

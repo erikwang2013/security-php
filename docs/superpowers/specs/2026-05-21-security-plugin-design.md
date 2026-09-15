@@ -1,20 +1,22 @@
 # Security Plugin Design
 
+> **Note (2026-09-15):** Design as of 2026-05-21. The project has since gained an `identity` layer — session hijack, unusual login, data tamper and login brute-force lockout detection — which runs *outside* `DetectorChain` because it needs cross-request state. Two cross-cutting additions came with it: `NormalizationScanner` re-scans decoded variants (URL / double-encoding, fullwidth, HTML entities) to close encoding bypasses, and `SecurityGuard::securityHeaders()` injects hardening response headers on both normal and blocked responses. The diagram and detector sections below have been updated to include these; see README「身份维度检测」/ "Identity Detection" for config and integration.
+
 ## Overview
 
-`erikwang2013/security-php` — PHP security attack detection plugin. Detects XSS, SQL injection, command injection, path traversal, malicious file uploads, and 26 other attack types. Compatible with webman, Laravel, ThinkPHP, Hyperf via framework-specific middleware adapters. Includes HTTP protocol validation (method/size/content-type), CSRF origin check, IP attack escalation blacklist, and pluggable storage backends (File/Redis/Cache).
+`erikwang2013/security-php` — PHP security attack detection plugin. Detects XSS, SQL injection, command injection, path traversal, malicious file uploads, and 26 other attack types. Compatible with webman, Laravel, ThinkPHP, Hyperf via framework-specific middleware adapters. Includes HTTP protocol validation (method/size/content-type), CSRF origin check, IP attack escalation blacklist, and pluggable storage backends (File/Redis/Cache). On top of the 31 stateless detectors, the `identity` layer adds four cross-request checks (session hijack, unusual login, data tamper, login brute-force lockout), and encoding normalization rescans decoded payload variants.
 
 ## Architecture
 
 ```
-Request → Framework Middleware → SecurityGuard → DetectorChain → [31 Detectors] → ThreatResult[]
-                  │                  │
-                  │             ┌────┴────────┐
-                  │             ▼              ▼
-                  │        IpBlacklist       Logger
-                  │        (attack counting) (file log)
-                  │             │
-                  │        ┌────┴────┐
+Request → Framework Middleware → SecurityGuard → DetectorChain → [31 Detectors] ─┐
+                  │                  │                                          │
+                  │             ┌────┴────────┐                                 ├→ ThreatResult[]
+                  │             ▼              ▼                                │
+                  │        IpBlacklist       Logger          IdentityGuard ─────┘
+                  │        (attack counting) (file log)  (session/login/tamper/lockout)
+                  │             │                              │
+                  │        ┌────┴──────────────────────────────┘
                   │        ▼         ▼         ▼
                   │    FileStorage RedisStorage CacheStorage
                   │    (JSON+flock) (php-redis) (per-key files)
@@ -53,7 +55,7 @@ Fields: `type`, `severity` (critical/high/medium/low), `field`, `payload`, `deta
 
 ### 31 Detectors (27 payload-scanner + 4 HTTP-protocol)
 
-**Payload scanners (27):** Extend `AbstractRegexDetector` (23) or implement `DetectorInterface` directly (4: Upload, JwtAttack, PrototypePollution, DataLeak). Cover injection attacks (XSS, SQLi, CMDi, NoSQL, LDAP, XPATH, JNDI, SSI, GraphQL, SSTI), protocol/request attacks (SSRF, XXE, header/host injection, request smuggling, open redirect, CORS, WebSocket, DNS rebinding), data/serialization (deserialization, CSV, mail header, JWT, prototype pollution), and file/sensitive data (path traversal, upload, data leak).
+**Payload scanners (27):** Extend `AbstractRegexDetector` (25) or implement `DetectorInterface` directly (2: Upload, JwtAttack). Cover injection attacks (XSS, SQLi, CMDi, NoSQL, LDAP, XPATH, JNDI, SSI, GraphQL, SSTI), protocol/request attacks (SSRF, XXE, header/host injection, request smuggling, open redirect, CORS, WebSocket, DNS rebinding), data/serialization (deserialization, CSV, mail header, JWT, prototype pollution), and file/sensitive data (path traversal, upload, data leak).
 
 **HTTP protocol validators (4):** Implement `DetectorInterface` directly, read `$_SERVER` superglobals:
 | Detector | Check | Status Code |
@@ -62,6 +64,25 @@ Fields: `type`, `severity` (critical/high/medium/low), `field`, `payload`, `deta
 | BodySizeDetector | `$_SERVER['CONTENT_LENGTH']` against max size | **413** |
 | ContentTypeDetector | `$_SERVER['CONTENT_TYPE']` against allowed MIME types (strips charset) | **415** |
 | CsrfOriginDetector | `$_SERVER['HTTP_ORIGIN']` vs `$_SERVER['HTTP_HOST']`, with configurable cross-origin whitelist | 403 |
+
+### Identity Checks (outside DetectorChain)
+
+Stateless detectors cannot see history, so these four run in `IdentityGuard` (`src/Identity/`) and their threats are merged into the same result list by `SecurityGuard::guard()`, sharing logging, dedup and block/log mode. Default mode is `log` for all four.
+
+| Check | Threat type | State | Status Code |
+|---|---|---|---|
+| Session hijack | `session_hijack` | `ident:sess:` + `sha256(session id)` → UA + IP-prefix fingerprint | **401** |
+| Unusual login | `unusual_login` | `ident:login:` + `sha256(user id)` → set of known login places | **401** |
+| Data tamper | `data_tamper` | HMAC-SHA256 signature over the protected field values | 403 |
+| Login lockout | `login_lockout` | `ident:login:` + `sha256(user id)` → failure count in a sliding window | **429** |
+
+`IdentityGuard::check()` runs only the two *per-request* checks (`session_hijack`, `data_tamper`). The other two are caller-driven, because only the application knows whether a login attempt succeeded: `recordLogin()` fires from the success branch, `recordFailedLogin()` and `isLockedOut()` from the failure branch. Each check is gated by `detectors.<type>.enabled`, so adding one is a config entry plus a guard read — the block/log mode, logging and IP escalation all work without new code.
+
+Session identity is extracted from either a cookie or a token header (`Authorization: Bearer` / `X-Token` / custom), so cookie-less API and mini-program clients take the same code path. Raw session IDs and tokens are never persisted or logged — only `sha256` hashes, logged as `#` + the first 8 hex chars. The signing key comes from `getenv('SECURITY_SIGNING_KEY')`; unset means the tamper check silently disables.
+
+Lockout keys on the account by default (`include_ip => false`), which is what lets it stop a distributed spray — but it also means an attacker can lock any known account by hammering it. That is why `lock_seconds` defaults low (900s); set `include_ip => true` to split the counter per source IP when that tradeoff is unacceptable.
+
+`SecurityGuard::guard()` passes the **unfiltered** flatten to `IdentityGuard::check()` while the detector chain gets the whitelist-filtered one. A protected field that also appears in `whitelist_fields` would otherwise arrive with its signature stripped and read as tampering.
 
 ### Storage Abstraction
 Pluggable storage backends via `StorageInterface` (`get/set/delete/has/all/clear`):
@@ -125,6 +146,13 @@ Each middleware:
 - `ip_blacklist.enabled/max_attempts/window_seconds/ban_duration_seconds` — IP escalation config
 - `storage.type` — backend: `file` (JSON+flock), `redis` (php-redis), `cache` (per-key files)
 - `storage.file.path` / `storage.redis.*` / `storage.cache.*` — per-backend options
+- `identity.enabled` — master switch for the identity layer (requires a storage backend)
+- `identity.session.*` — session fingerprint options (identity source: cookie name / token header)
+- `identity.login.*` — login baseline options; `identity.login.lockout.*` nests here (`max_failures`, `window_seconds`, `lock_seconds`, `include_ip`)
+- `identity.tamper.*` — fields to sign and the signature envelope option
+- `signing_key` — HMAC key for `data_tamper`, read from `getenv('SECURITY_SIGNING_KEY')`; empty disables signing entirely (fail-safe: `sign()` returns `''`, `verify()` returns `null`, so upgrades never start rejecting requests)
+- `normalization.enabled` / `normalization.max_depth` — decode URL / double-encoding, fullwidth and HTML-entity variants before re-scanning; matched variants are tagged `[decoded:xxx]` in the payload
+- `security_headers.*` — response headers injected on both normal and blocked responses; empty-string values are skipped
 
 ## Package Structure
 
@@ -140,11 +168,19 @@ erikwang2013/security-php/
     SecurityGuard.php
     Logger.php
     IpBlacklist.php
+    NormalizationScanner.php
     Storage/
       StorageInterface.php
       FileStorage.php
       RedisStorage.php
       CacheStorage.php
+    Identity/
+      IdentityGuard.php
+      SessionFingerprint.php
+      LoginBaseline.php
+      LoginLockout.php
+      FieldSigner.php
+      IpPrefix.php
     Detector/
       AbstractRegexDetector.php
       XssDetector.php
@@ -179,6 +215,8 @@ erikwang2013/security-php/
       ContentTypeDetector.php
       CsrfOriginDetector.php
     helpers.php
+    Composer/
+      Installer.php
   middleware/
     Laravel/
       SecurityMiddleware.php

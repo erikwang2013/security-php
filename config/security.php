@@ -261,6 +261,46 @@ return [
             'mode'    => 'block',
             'allowed_origins' => [],
         ],
+
+        // 会话劫持检测（Cookie 与 Token 登录通用）
+        // 首次见到某会话时记录指纹基线（User-Agent + IP 网段），之后不一致即告警。
+        // 会话标识优先取 Cookie，其次取 Authorization: Bearer / X-Token 等头，
+        // 因此 API / 小程序 / App 的 token 登录同样覆盖。
+        // 注意：默认 log 模式，因为移动网络切基站、浏览器升级都会改变指纹，
+        // 需先观察误报率再切 block。命中时返回 401（登录态不可信，应重新认证）
+        'session_hijack' => [
+            'enabled' => true,
+            'mode'    => 'log',
+        ],
+
+        // 异地登录检测
+        // 需应用在登录 / token 签发成功后调用 SecurityGuard::recordLogin($userId)。
+        // 不调用则本项不产生任何结果（不会误报）。
+        // 注意：默认 log 模式；首个登录地即基线，局限详见 README
+        'unusual_login' => [
+            'enabled' => true,
+            'mode'    => 'log',
+        ],
+
+        // 数据篡改检测
+        // 校验受保护字段的 HMAC 签名（由 SecurityGuard::signFields() 签发）。
+        // 必须同时配置 signing_key 且 identity.tamper.protected_fields 非空才生效，
+        // 否则完全静默 —— 已有应用升级后不会因此失败
+        'data_tamper' => [
+            'enabled' => true,
+            'mode'    => 'log',
+        ],
+
+        // 登录暴力破解锁定
+        // 需应用在登录失败分支调用 SecurityGuard::recordFailedLogin($userId, $ip)，
+        // 在认证前用 SecurityGuard::isLockedOut($userId, $ip) 提前拦截。
+        // 不调用则本项不产生任何结果（不会误报）。
+        // 注意：默认 log 模式；以账号为锁定单位，攻击者可故意锁死受害者账号，
+        // 故 lock_seconds 默认较短，详见 README
+        'login_lockout' => [
+            'enabled' => true,
+            'mode'    => 'log',
+        ],
     ],
 
     /*
@@ -275,6 +315,94 @@ return [
         'window_seconds' => 60,
         'ban_duration_seconds' => 900, // 15 分钟
     ],
+
+    /*
+     * 身份维度检测（会话劫持 / 异地登录 / 数据篡改）
+     * 这三项需要跨请求状态，基线数据存入下面的 storage。
+     * 存储 key 一律是 sha256 摘要，不落原始 session id / token 明文。
+     */
+    'identity' => [
+        'enabled' => true,
+
+        // 会话劫持：会话标识 -> 指纹基线
+        'session' => [
+            // 会话 Cookie 名。按框架实际使用的名字修改，留空则只查 token 头
+            'cookie' => 'laravel_session',
+            // 无 Cookie 时按顺序查这些头（大小写不敏感，自动剥离 Bearer 前缀）
+            'headers' => ['authorization', 'x-token', 'x-auth-token'],
+            // 绑定因子：ua = User-Agent，ip = IP 网段
+            'bind' => ['ua', 'ip'],
+            // IP 比较的网段位数，避免移动网络换基站即告警（IPv6 固定 /64）
+            'ip_bits' => 24,
+            // 超过该时长未活动的会话视为新会话，重新建立基线（秒）
+            'ttl' => 7200,
+            // 惰性回收：每 N 次请求触发一次过期清理，0 = 关闭
+            // StorageInterface 没有 TTL，改用 Redis 后端时可以把这两项关掉
+            'gc_probability' => 100,
+            'gc_batch' => 20,
+        ],
+
+        // 异地登录：user_id -> 常用地点
+        'login' => [
+            // 地点在此时间内未再出现即遗忘（秒），也用于限制存储增长
+            'ttl' => 86400,
+            // 每个账号最多记住几个地点，超出按最久未用淘汰
+            'max_points' => 10,
+            // 无 $location 时回落到 IP 网段，比较位数
+            'ip_bits' => 24,
+
+            // 暴力破解锁定：滑动窗口内的失败次数
+            'lockout' => [
+                // 窗口内累计达到该次数即锁定（秒）
+                'max_failures' => 5,
+                // 失败计数的有效期（秒）
+                'window_seconds' => 900,
+                // 锁定时长（秒）。偏短：以账号为单位锁定，攻击者可用它锁死受害者
+                'lock_seconds' => 900,
+                // true 时按 user_id + IP 分别计数，把锁定收敛到攻击者来源，
+                // 但同一账号换 IP 即可重置计数
+                'include_ip' => false,
+            ],
+        ],
+
+        // 数据篡改：受保护字段的 HMAC 签名
+        'tamper' => [
+            // 客户端回传签名的字段名
+            'token_field' => '_security_sig',
+            // 要签名的字段，扁平化点路径（如 'order.price'、'user.id'）
+            // 留空则本项完全不生效 —— 必须显式声明保护哪些字段
+            'protected_fields' => [],
+            // 签名有效期（秒）
+            'ttl' => 1800,
+        ],
+    ],
+
+    /*
+     * 编码/混淆归一化
+     * 对携带编码信号的请求值额外扫描其解码结果，避免纯正则检测被绕过：
+     *   URL 编码（%3Cscript%3E）、双重编码（%2527）、全角字符（Ｓｅｌｅｃｔ）、
+     *   HTML 实体（&#60;script&#62;）。
+     * 原值仍按原样扫描，两边都可能命中；解码命中在日志 detail 里标注 [decoded:xxx]。
+     * 每种变体都先做廉价的信号预检（值里没有 % 就绝不调用 urldecode），
+     * 所以无编码的请求不产生额外开销。
+     * 注意：含 % 的合法文本（带 URL 的表单、搜索词）解码后可能新增命中，
+     * 因此高误报检测器保持 log 模式即可，勿整组切 block。
+     */
+    'normalization' => [
+        'enabled'   => true,
+        'urldecode' => true, // 值包含 % 时解码（含双重编码）
+        'fullwidth' => true, // 全角 ASCII 转半角
+        'entities'  => true, // 值包含 &# 或 &amp; 时解 HTML 实体
+    ],
+
+    /*
+     * 字段签名密钥（数据篡改检测用）
+     * 留空则签名功能静默禁用，不影响任何既有行为。
+     * 务必用环境变量注入，不要写进版本库：
+     *   export SECURITY_SIGNING_KEY="$(php -r 'echo bin2hex(random_bytes(32));')"
+     * 多机部署必须一致，否则各节点会互判签名无效。
+     */
+    'signing_key' => getenv('SECURITY_SIGNING_KEY') ?: '',
 
     /*
      * 存储配置
@@ -320,6 +448,30 @@ return [
 
     // 返回给客户端的内容，{type} 会被替换为攻击类型标识
     'block_message' => 'Request blocked by security policy',
+
+    /*
+     * 安全响应头
+     * 中间件在拦截响应与放行响应上都追加这些头。
+     * 值为空字符串表示不发送 —— CSP/HSTS 依赖站点实际情况，留空即保持关闭。
+     * 注意：Strict-Transport-Security 应只在 HTTPS 下发送，请自行判断后再填值。
+     */
+    'security_headers' => [
+        'enabled' => true,
+        'headers' => [
+            // 禁止浏览器 MIME 类型嗅探（防止上传的 HTML 被当网页执行）
+            'X-Content-Type-Options' => 'nosniff',
+            // 防点击劫持：SAMEORIGIN=仅同源可嵌；DENY=完全禁止
+            'X-Frame-Options'        => 'SAMEORIGIN',
+            // 控制跨站请求泄露多少来源信息
+            'Referrer-Policy'        => 'strict-origin-when-cross-origin',
+            // 例：geolocation=(), camera=(), microphone=()
+            'Permissions-Policy'     => '',
+            // 例：default-src 'self'; script-src 'self'
+            'Content-Security-Policy' => '',
+            // 例：max-age=31536000; includeSubDomains
+            'Strict-Transport-Security' => '',
+        ],
+    ],
 
     /*
      * 日志配置

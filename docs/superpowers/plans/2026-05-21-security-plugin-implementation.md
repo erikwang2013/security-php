@@ -13,6 +13,8 @@
 >
 > See `README.md` and `docs/superpowers/specs/2026-05-21-security-plugin-design.md` for current architecture.
 
+> **Note (2026-09-15):** Added an **identity layer** (`src/Identity/`) — session hijack, unusual login, data tamper, and login brute-force lockout detection. These need cross-request state, so they run *outside* `DetectorChain` and merge into the same threat list via `SecurityGuard::guard()`. Cookie sessions and token logins (`Authorization: Bearer` / `X-Token`) share one code path; raw session IDs and tokens are persisted and logged as `sha256` hashes only. Opt-in via the `identity` config block. Two further additions landed alongside it: `NormalizationScanner` re-scans decoded payload variants (URL/double-encoding, fullwidth, HTML entities), and `SecurityGuard::securityHeaders()` injects hardening response headers on both normal and blocked responses. The suite is now **402 tests, 978 assertions**. The File Map below is the v1 plan's map and is left as-is.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `erikwang2013/security-php` — a Composer-installable PHP security attack detection plugin with framework adapters for Laravel, Webman, ThinkPHP, Hyperf.

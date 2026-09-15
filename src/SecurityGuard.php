@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace Erikwang2013\Security;
 
+use Erikwang2013\Security\Identity\IdentityGuard;
 use Erikwang2013\Security\Storage\FileStorage;
 use Erikwang2013\Security\Storage\RedisStorage;
 use Erikwang2013\Security\Storage\CacheStorage;
@@ -20,6 +21,8 @@ class SecurityGuard
     private static ?array $config = null;
     private static ?IpBlacklist $ipBlacklist = null;
     private static ?array $whitelistFields = null;
+    private static ?StorageInterface $storage = null;
+    private static ?IdentityGuard $identity = null;
 
     /**
      * Initialize with config. Called once by middleware or bootstrap.
@@ -36,10 +39,17 @@ class SecurityGuard
         self::$chain = new DetectorChain();
         self::$logger = new Logger($config['log'] ?? []);
 
+        $identityConfig = $config['identity'] ?? [];
+
+        // One shared instance: two FileStorage objects on the same path would
+        // each hold a stale JSON map and overwrite each other's writes.
         $ipBlacklistConfig = $config['ip_blacklist'] ?? [];
-        if (!empty($ipBlacklistConfig['enabled'])) {
-            $storage = self::createStorage($config['storage'] ?? []);
-            self::$ipBlacklist = new IpBlacklist($ipBlacklistConfig, $storage);
+        if (!empty($ipBlacklistConfig['enabled']) || !empty($identityConfig['enabled'])) {
+            self::$storage = self::createStorage($config['storage'] ?? []);
+        }
+
+        if (!empty($ipBlacklistConfig['enabled']) && self::$storage !== null) {
+            self::$ipBlacklist = new IpBlacklist($ipBlacklistConfig, self::$storage);
         }
 
         $detectorsConfig = $config['detectors'] ?? [];
@@ -83,6 +93,12 @@ class SecurityGuard
                 self::$chain->add(new $class());
             }
         }
+
+        // Identity checks live outside the regex chain: they need cross-request
+        // state, which the stateless detectors deliberately do not have.
+        if (!empty($identityConfig['enabled']) && self::$storage !== null) {
+            self::$identity = new IdentityGuard(self::$storage, $config, $detectorsConfig);
+        }
     }
 
     /**
@@ -100,7 +116,10 @@ class SecurityGuard
         $ip = $meta['ip'] ?? '';
         // Resolve real client IP through trusted proxies before whitelist/blacklist checks
         if ($ip !== '' && !empty(self::$config['trusted_proxies'] ?? [])) {
-            $ip = self::resolveClientIp($ip, $meta);
+            // The identity checks and the log line must see the same client the
+            // blacklist does, or behind a proxy they would bind a session to the
+            // proxy's network and the location signal could never fire.
+            $meta['ip'] = $ip = self::resolveClientIp($ip, $meta);
         }
         if ($ip && self::isWhitelistedIp($ip)) {
             return [];
@@ -125,7 +144,10 @@ class SecurityGuard
             }
         }
 
-        $filtered = self::filterWhitelistFields(self::flattenData($data));
+        // $flat stays unfiltered: a protected field that also appears in
+        // whitelist_fields must still reach the integrity check.
+        $flat = self::flattenData($data);
+        $filtered = self::filterWhitelistFields($flat);
 
         // Inject request metadata so detectors don't rely on superglobals
         // (CLI / Swoole / Octane environments have empty $_SERVER)
@@ -144,12 +166,21 @@ class SecurityGuard
         }
         try {
             $threats = self::$chain->scan($filtered);
+            // Decoded variants of values carrying an encoding signal. Runs
+            // inside the same backtrack_limit guard as the original scan.
+            $threats = array_merge(
+                $threats,
+                NormalizationScanner::scan(self::$chain, $filtered, self::$config['normalization'] ?? []),
+            );
         } finally {
             // Guard false/'' like d155aa2: ini_set(false) would clear the limit
             if ($oldLimit !== false && $oldLimit !== '' && $oldLimit !== '1000000') {
                 ini_set('pcre.backtrack_limit', $oldLimit);
             }
         }
+
+        // Same list as the regex threats, so they share logging + block mode
+        $threats = array_merge($threats, self::$identity?->check($flat, $meta) ?? []);
 
         foreach ($threats as $threat) {
             if (self::$logger !== null) {
@@ -206,6 +237,20 @@ class SecurityGuard
     public static function blockMessage(): string
     {
         return (string) (self::getConfig()['block_message'] ?? 'Request blocked by security policy');
+    }
+
+    /**
+     * Security response headers for middleware to append to every response.
+     * Empty when disabled; blank values are opt-in placeholders, so CSP/HSTS
+     * stay off until the site actually configures them.
+     */
+    public static function securityHeaders(): array
+    {
+        $cfg = self::getConfig()['security_headers'] ?? [];
+        if (empty($cfg['enabled'])) {
+            return [];
+        }
+        return array_filter($cfg['headers'] ?? [], fn ($value) => is_string($value) && $value !== '');
     }
 
     /**
@@ -389,6 +434,81 @@ class SecurityGuard
     }
 
     /**
+     * Record a successful login for the unusual-location baseline, and return
+     * the threat when the location is new so the caller can act on it.
+     *
+     * Call from the success branch of login / token issuing — cookie login and
+     * token login use the same call; the baseline keys off the user id.
+     */
+    public static function recordLogin(string $userId, ?string $location = null, array $meta = []): ?ThreatResult
+    {
+        self::getConfig();
+
+        $threat = self::$identity?->recordLogin($userId, $location, $meta);
+        if ($threat !== null && self::$logger !== null) {
+            // Runs from a controller, so nothing else would log it
+            self::$logger->log($threat, $meta);
+        }
+
+        return $threat;
+    }
+
+    /**
+     * Record one failed login. Returns a threat when this attempt locked the
+     * account, or when it was already locked — call it from the failure branch
+     * of login / token verification, which the middleware never sees.
+     */
+    public static function recordFailedLogin(string $userId, ?string $ip = null, array $meta = []): ?ThreatResult
+    {
+        self::getConfig();
+
+        $threat = self::$identity?->recordFailedLogin($userId, $ip ?? ($meta['ip'] ?? null));
+        if ($threat !== null && self::$logger !== null) {
+            // Runs from a controller, so nothing else would log it
+            self::$logger->log($threat, $meta);
+        }
+
+        return $threat;
+    }
+
+    /**
+     * Gate an auth attempt before it runs; true means the account is locked.
+     */
+    public static function isLockedOut(string $userId, ?string $ip = null, array $meta = []): bool
+    {
+        self::getConfig();
+
+        return self::$identity?->isLockedOut($userId, $ip ?? ($meta['ip'] ?? null)) ?? false;
+    }
+
+    /**
+     * Sign protected field values for the client to send back. '' when unconfigured.
+     *
+     * @param array<string, mixed> $fields flat dot-path => value, e.g. ['order.price' => 100]
+     */
+    public static function signFields(array $fields, ?int $ttl = null): string
+    {
+        self::getConfig();
+
+        return self::$identity === null ? '' : self::$identity->signFields($fields, $ttl);
+    }
+
+    /**
+     * Verify protected field values standalone; guard() runs the same check per request.
+     */
+    public static function verifyFields(array $data, array $meta = []): ?ThreatResult
+    {
+        self::getConfig();
+
+        $threat = self::$identity?->verifyFields(self::flattenData($data));
+        if ($threat !== null && self::$logger !== null) {
+            self::$logger->log($threat, $meta);
+        }
+
+        return $threat;
+    }
+
+    /**
      * Create a storage adapter from config.
      */
     private static function createStorage(array $config): StorageInterface
@@ -420,5 +540,7 @@ class SecurityGuard
         self::$config = null;
         self::$ipBlacklist = null;
         self::$whitelistFields = null;
+        self::$storage = null;
+        self::$identity = null;
     }
 }

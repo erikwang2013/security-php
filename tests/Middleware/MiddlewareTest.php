@@ -53,6 +53,8 @@ namespace Erikwang2013\Security\Tests\Middleware {
             $this->assertFalse($nextCalled, 'Blocked request must not reach the next middleware');
             $this->assertSame(403, $response->getStatusCode());
             $this->assertSame('Request blocked by security policy', $response->getContent());
+            // Security headers land on the block response as well
+            $this->assertSame('nosniff', $response->getHeaders()['X-Content-Type-Options']);
         }
 
         public function testLaravelMiddlewarePassesSafeRequest(): void
@@ -63,9 +65,12 @@ namespace Erikwang2013\Security\Tests\Middleware {
             );
             $middleware = new LaravelMiddleware();
 
-            $response = $middleware->handle($request, fn () => 'NEXT');
+            $response = $middleware->handle($request, fn () => new FakeResponse('', 200, []));
 
-            $this->assertSame('NEXT', $response);
+            $this->assertSame(200, $response->getStatusCode());
+            // Headers are appended to pass-through responses too
+            $this->assertSame('nosniff', $response->getHeaders()['X-Content-Type-Options']);
+            $this->assertSame('SAMEORIGIN', $response->getHeaders()['X-Frame-Options']);
         }
 
         public function testLaravelMiddlewareBlocksPhpUpload(): void
@@ -114,6 +119,7 @@ namespace Erikwang2013\Security\Tests\Middleware {
 
             $this->assertSame(200, $response->getStatusCode());
             $this->assertSame('NEXT', $response->getBody());
+            $this->assertSame('nosniff', $response->getHeaders()['X-Content-Type-Options']);
         }
 
         public function testWebmanMiddlewareBlocksPhpUpload(): void
@@ -158,9 +164,10 @@ namespace Erikwang2013\Security\Tests\Middleware {
             $request = new \think\Request(param: ['name' => 'John'], ip: '203.0.113.31');
             $middleware = new ThinkphpMiddleware();
 
-            $response = $middleware->handle($request, fn () => 'NEXT');
+            $response = $middleware->handle($request, fn () => new \think\Response('NEXT', '', 200));
 
-            $this->assertSame('NEXT', $response);
+            $this->assertSame('NEXT', $response->getContent());
+            $this->assertSame('nosniff', $response->getHeaders()['X-Content-Type-Options']);
         }
 
         // ──────────────── Hyperf ────────────────
@@ -195,16 +202,36 @@ namespace Erikwang2013\Security\Tests\Middleware {
 
             $this->assertTrue($handler->called);
             $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame('nosniff', $response->getHeaders()['X-Content-Type-Options']);
         }
+    }
+
+    /**
+     * Minimal stand-in for Symfony\Component\HttpFoundation\HeaderBag
+     */
+    class HeaderBag
+    {
+        public function __construct(private array $headers = []) {}
+
+        public function set(string $name, string $value): void
+        {
+            $this->headers[$name] = $value;
+        }
+
+        public function all(): array { return $this->headers; }
     }
 
     class FakeResponse
     {
+        public HeaderBag $headers;
+
         public function __construct(
             private string $content = '',
             private int $statusCode = 200,
-            private array $headers = [],
-        ) {}
+            array $headers = [],
+        ) {
+            $this->headers = new HeaderBag($headers);
+        }
 
         public function getContent(): string
         {
@@ -218,7 +245,7 @@ namespace Erikwang2013\Security\Tests\Middleware {
 
         public function getHeaders(): array
         {
-            return $this->headers;
+            return $this->headers->all();
         }
     }
 }
@@ -325,6 +352,12 @@ namespace Webman\Http {
                 private string $body = '',
             ) {}
 
+            public function withHeader(string $name, string $value): self
+            {
+                $this->headers[$name] = $value;
+                return $this;
+            }
+
             public function getStatusCode(): int { return $this->status; }
             public function getHeaders(): array { return $this->headers; }
             public function getBody(): string { return $this->body; }
@@ -386,6 +419,7 @@ namespace think {
                 private string $content = '',
                 private string $type = '',
                 private int $code = 200,
+                private array $headers = [],
             ) {}
 
             public static function create(string $data = '', string $type = '', int $code = 200): self
@@ -393,9 +427,20 @@ namespace think {
                 return new self($data, $type, $code);
             }
 
+            /**
+             * $filterValue false disables htmlspecialchars so a CSP value with
+             * single quotes is not escaped
+             */
+            public function header(array $header = [], bool $filterValue = true): self
+            {
+                $this->headers = array_merge($this->headers, $header);
+                return $this;
+            }
+
             public function getContent(): string { return $this->content; }
             public function getType(): string { return $this->type; }
             public function getCode(): int { return $this->code; }
+            public function getHeaders(): array { return $this->headers; }
         }
     }
 
