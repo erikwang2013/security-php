@@ -22,6 +22,9 @@ namespace Erikwang2013\Security;
  */
 final class NormalizationScanner
 {
+    /** @var array<string, string>|null fullwidth byte-sequence => ASCII, built once */
+    private static ?array $fullwidthMap = null;
+
     /**
      * @return ThreatResult[]
      */
@@ -132,11 +135,15 @@ final class NormalizationScanner
      */
     private static function fullwidthToAscii(string $value): string
     {
-        $map = [self::utf8(0xFF60) => ' ']; // U+FF60 fullwidth space
-        for ($i = 0x21; $i <= 0x7E; $i++) {
-            $map[self::utf8(0xFEE0 + $i)] = chr($i); // U+FF01-U+FF5E
+        if (self::$fullwidthMap === null) {
+            $map = [self::utf8(0xFF60) => ' ']; // U+FF60 fullwidth space
+            for ($i = 0x21; $i <= 0x7E; $i++) {
+                $map[self::utf8(0xFEE0 + $i)] = chr($i); // U+FF01-U+FF5E
+            }
+            self::$fullwidthMap = $map;
         }
-        return strtr($value, $map);
+
+        return strtr($value, self::$fullwidthMap);
     }
 
     private static function utf8(int $cp): string
