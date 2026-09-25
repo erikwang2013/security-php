@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 850" width="1000" height="850"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
+     role="img" aria-labelledby="archTitle archDesc">
+  <title id="archTitle">Security PHP 架构设计</title>
+  <desc id="archDesc">入口层（四个框架中间件 / 全局函数 / 手动调用）汇入 SecurityGuard 门面，门面依次执行白名单、扁平化、正则检测链、编码归一化重扫与身份校验，结果交给 Logger 与 IpBlacklist，最后输出放行或拦截响应，拦截响应在浏览器请求下返回小盾拦截页。</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="850" fill="#FFFFFF"/>
+
+  <text x="40" y="46" font-size="26" font-weight="700" fill="#0F172A">Security PHP · 架构设计</text>
+  <text x="40" y="72" font-size="13" fill="#64748B">31 个无状态检测器 + 4 项跨请求身份校验；框架适配层与核心零耦合，全部经 SecurityGuard 门面同一条链路</text>
+
+  <!-- ══════════ ① 入口层 ══════════ -->
+  <text x="40" y="110" font-size="12" font-weight="600" fill="#64748B">① 入口层 —— 提取 GET / POST / COOKIE / FILES</text>
+
+  <rect x="40" y="122" width="290" height="58" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="185" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">框架中间件 × 4</text>
+  <text x="185" y="167" font-size="12" fill="#64748B" text-anchor="middle">Laravel · Webman · ThinkPHP · Hyperf</text>
+
+  <rect x="355" y="122" width="290" height="58" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="500" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">全局函数（无框架）</text>
+  <text x="500" y="167" font-size="12" fill="#64748B" text-anchor="middle">security_guard() · security_scan_current_request()</text>
+
+  <rect x="670" y="122" width="290" height="58" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="815" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">手动调用</text>
+  <text x="815" y="167" font-size="12" fill="#64748B" text-anchor="middle">SecurityGuard::guard($data, $meta)</text>
+
+  <path d="M185 180 L185 196 M500 180 L500 196 M815 180 L815 196" stroke="#94A3B8" stroke-width="1.6"/>
+  <path d="M185 196 L815 196" stroke="#94A3B8" stroke-width="1.6"/>
+  <path d="M500 196 L500 216" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="510" y="214" font-size="11.5" fill="#94A3B8">mergeRequestSources() —— 同名参数跨来源不互相覆盖</text>
+
+  <!-- ══════════ ② 门面 ══════════ -->
+  <rect x="40" y="222" width="920" height="156" rx="12" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5"/>
+  <text x="60" y="250" font-size="15" font-weight="700" fill="#1E40AF">② SecurityGuard 门面 —— 一次 guard() 调用跑完整条流水线</text>
+  <text x="60" y="269" font-size="11.5" fill="#3B82F6">任一环节短路即返回：白名单命中直接放行、黑名单命中直接 403</text>
+
+  <!-- 10 个步骤 chip：两行五列 -->
+  <g font-size="12.5" fill="#334155">
+    <rect x="60" y="282" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="72" y="305">1 IP 白名单</text>
+    <rect x="238" y="282" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="250" y="305">2 IP 黑名单检查</text>
+    <rect x="416" y="282" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="428" y="305">3 字段白名单</text>
+    <rect x="594" y="282" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="606" y="305">4 嵌套扁平化</text>
+    <rect x="772" y="282" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="784" y="305">5 元数据注入</text>
+
+    <rect x="60" y="328" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="72" y="351">6 PCRE 回溯限制</text>
+    <rect x="238" y="328" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="250" y="351">7 检测器链扫描</text>
+    <rect x="416" y="328" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="428" y="351">8 编码归一化重扫</text>
+    <rect x="594" y="328" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="606" y="351">9 身份维度校验</text>
+    <rect x="772" y="328" width="164" height="36" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.4"/>
+    <text x="784" y="351">10 日志与拦截决策</text>
+  </g>
+  <g font-size="14" fill="#93C5FD" text-anchor="middle">
+    <text x="231" y="306">›</text><text x="409" y="306">›</text><text x="587" y="306">›</text><text x="765" y="306">›</text>
+    <text x="153" y="352">↳</text>
+    <text x="231" y="352">›</text><text x="409" y="352">›</text><text x="587" y="352">›</text><text x="765" y="352">›</text>
+  </g>
+
+  <path d="M220 378 L220 402 M500 378 L500 402 M820 378 L820 402" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ══════════ ③ 执行体 ══════════ -->
+  <rect x="40" y="408" width="440" height="170" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="60" y="436" font-size="15" font-weight="700" fill="#1E293B">DetectorChain · 31 个无状态检测器</text>
+  <text x="60" y="455" font-size="11.5" fill="#64748B">策略模式，按 priority 顺序执行，只依赖本次请求数据</text>
+  <rect x="60" y="468" width="400" height="46" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.2"/>
+  <text x="74" y="487" font-size="12.5" fill="#334155">25 × AbstractRegexDetector</text>
+  <text x="74" y="504" font-size="11.5" fill="#64748B">只写 name() + patterns()，扫描循环在基类</text>
+  <rect x="60" y="522" width="400" height="46" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.2"/>
+  <text x="74" y="541" font-size="12.5" fill="#334155">6 × 自定义 detect()</text>
+  <text x="74" y="558" font-size="11.5" fill="#64748B">Upload / JwtAttack / HttpMethod / BodySize / ContentType / CsrfOrigin</text>
+
+  <rect x="500" y="408" width="280" height="170" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="520" y="436" font-size="15" font-weight="700" fill="#1E293B">IdentityGuard · 4 项校验</text>
+  <text x="520" y="455" font-size="11.5" fill="#64748B">跨请求状态，链外执行</text>
+  <g font-size="12.5" fill="#334155">
+    <rect x="520" y="464" width="240" height="26" rx="7" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="532" y="482">session_hijack · 401</text>
+    <rect x="520" y="493" width="240" height="26" rx="7" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="532" y="511">unusual_login · 401</text>
+    <rect x="520" y="522" width="240" height="26" rx="7" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="532" y="540">data_tamper · 403</text>
+    <rect x="520" y="551" width="240" height="26" rx="7" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="532" y="569">login_lockout · 429</text>
+  </g>
+
+  <rect x="800" y="408" width="160" height="170" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="820" y="436" font-size="15" font-weight="700" fill="#1E293B">IpBlacklist</text>
+  <text x="820" y="455" font-size="11.5" fill="#64748B">链外，门面直调</text>
+  <text x="820" y="487" font-size="12.5" fill="#334155">5 次 / 60 s</text>
+  <text x="820" y="507" font-size="12.5" fill="#334155">→ 封禁 15 分钟</text>
+  <text x="820" y="527" font-size="12.5" fill="#334155">→ 403</text>
+  <text x="820" y="556" font-size="11.5" fill="#64748B">仅 block 模式</text>
+  <text x="820" y="572" font-size="11.5" fill="#64748B">的威胁计数</text>
+
+  <!-- 汇集总线 + 分支 -->
+  <path d="M260 578 L260 600 M640 578 L640 600 M880 578 L880 600" stroke="#94A3B8" stroke-width="1.6"/>
+  <path d="M170 600 L880 600" stroke="#94A3B8" stroke-width="1.6"/>
+  <text x="200" y="620" font-size="11.5" fill="#94A3B8">全部威胁汇入一份结果列表（共用日志、去重与 block / log 模式）</text>
+  <path d="M170 600 L170 636" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M730 600 L730 636" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="178" y="632" font-size="11.5" fill="#059669">无威胁 / 仅 log 模式</text>
+  <text x="738" y="632" font-size="11.5" fill="#DC2626">命中 block 模式</text>
+
+  <!-- ══════════ ④ 输出 ══════════ -->
+  <rect x="40" y="642" width="440" height="118" rx="12" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.5"/>
+  <text x="60" y="672" font-size="15" font-weight="700" fill="#065F46">放行响应</text>
+  <text x="60" y="698" font-size="12.5" fill="#047857">业务响应原样返回，不改变响应体</text>
+  <text x="60" y="721" font-size="12.5" fill="#047857">追加 security_headers：nosniff · X-Frame-Options</text>
+  <text x="60" y="741" font-size="12.5" fill="#047857">Referrer-Policy · 可选 CSP / HSTS / Permissions-Policy</text>
+
+  <rect x="500" y="642" width="460" height="118" rx="12" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.5"/>
+  <text x="520" y="672" font-size="15" font-weight="700" fill="#991B1B">拦截响应</text>
+  <text x="520" y="698" font-size="12.5" fill="#B91C1C">状态码取检测器自带值：401 / 403 / 405 / 413 / 415 / 429</text>
+  <text x="520" y="721" font-size="12.5" fill="#B91C1C">Accept: text/html → 小盾 HTML 拦截页</text>
+  <text x="520" y="741" font-size="12.5" fill="#B91C1C">其余客户端 → 纯文本 block_message</text>
+
+  <!-- 小盾（拦截页里的项目宠物，简化内联版） -->
+  <g transform="translate(862 664) scale(0.42)">
+    <path d="M100 18 C118 28 142 37 160 41 C165 42 168 46 168 51 C168 106 148 152 100 180 C52 152 32 106 32 51 C32 46 35 42 40 41 C58 37 82 28 100 18 Z" fill="#3B82F6"/>
+    <ellipse cx="76" cy="84" rx="11" ry="13" fill="#FFFFFF"/>
+    <ellipse cx="124" cy="84" rx="11" ry="13" fill="#FFFFFF"/>
+    <circle cx="78" cy="86" r="5.5" fill="#12305F"/>
+    <circle cx="126" cy="86" r="5.5" fill="#12305F"/>
+    <path d="M88 103 Q100 115 112 103" fill="none" stroke="#12305F" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <!-- ══════════ 支撑层 ══════════ -->
+  <rect x="40" y="778" width="920" height="52" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="60" y="798" font-size="12" font-weight="600" fill="#475569">支撑层 · StorageInterface</text>
+  <text x="60" y="818" font-size="11.5" fill="#64748B">File / Redis / Cache 可插拔，IpBlacklist 与 IdentityGuard 共用同一实例</text>
+  <text x="540" y="798" font-size="12" font-weight="600" fill="#475569">支撑层 · Logger</text>
+  <text x="540" y="818" font-size="11.5" fill="#64748B">flock 原子写入 · 轮转 · 去重 · CRLF 防护</text>
+</svg>

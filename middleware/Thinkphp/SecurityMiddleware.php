@@ -49,7 +49,7 @@ class SecurityMiddleware
             'file'   => $files,
         ]);
 
-        $threats = SecurityGuard::guard($data, [
+        $meta = [
             'ip'              => $request->ip() ?? '0.0.0.0',
             'method'          => $request->method(),
             'uri'             => $request->pathinfo(),
@@ -57,6 +57,7 @@ class SecurityMiddleware
             'content_type'    => $request->header('content-type', ''),
             'origin'          => $request->header('origin', ''),
             'host'            => $request->header('host', ''),
+            'accept'          => $request->header('accept', ''),
             'x_forwarded_for' => $request->header('x-forwarded-for', ''),
             'transfer_encoding' => $request->header('transfer-encoding', ''),
             // Session identity comes from the request, not from $data: the
@@ -70,17 +71,20 @@ class SecurityMiddleware
                 'x-token'       => (string) $request->header('x-token', ''),
                 'x-auth-token'  => (string) $request->header('x-auth-token', ''),
             ],
-        ]);
+        ];
+
+        $threats = SecurityGuard::guard($data, $meta);
 
         $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
+            [$contentType, $body] = SecurityGuard::blockResponse($threats, $meta);
             // false disables ThinkPHP's htmlspecialchars, which would corrupt a
-            // CSP value containing single quotes
+            // CSP value containing single quotes — and the block page's own HTML
             return Response::create(
-                $block['message'],
-                'text/plain; charset=utf-8',
+                $body,
+                $contentType,
                 $block['status']
             )->header($securityHeaders, false);
         }

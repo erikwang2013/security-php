@@ -2,15 +2,32 @@
 
 > [中文文档](README.md)
 
-A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks, compatible with Laravel, Webman, ThinkPHP, and Hyperf — or usable with **no framework at all** via global functions.
+A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks, compatible with Laravel, Webman, ThinkPHP, and Hyperf — or usable with **no framework at all** via global functions. Its mascot is **小盾 (Shieldy)**, a blue shield holding a magnifying glass at the door.
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ---
 
+## Mascot: 小盾 (Shieldy)
+
+<img src="./docs/mascot.svg" alt="小盾 — the Security PHP mascot" width="130" align="right" />
+
+A friendly blue shield with a magnifying glass: the **shield** blocks, the **magnifier** looks. Vector
+art in `docs/mascot.svg`, transparent background, sharp at any size. It shows up in three places:
+
+| Where | File | Note |
+|---|---|---|
+| README / docs | `docs/mascot.svg` | Project art — avatar or illustration |
+| Architecture / lifecycle diagrams | `docs/svg/*.svg` | In the "block response" step |
+| **Blocked browser page** | `src/BlockPage.php` | Live code, see "Block Response" |
+
+Shieldy is decoration only — it takes no part in detection and never changes a verdict.
+
+---
+
 ## Overview
 
-Security PHP is a lightweight PHP security middleware that detects common web attack payloads through regex pattern matching and structural analysis. Each detector is independently configurable (enable/disable + block/log mode), with IP whitelisting (IPv4/IPv6 CIDR), IP attack escalation blacklist (5 attempts/60s → 15min ban), field whitelisting, log rotation, and deduplication. Detectors can return custom HTTP status codes (405/413/415, etc.). Persistent data supports File/Redis/Cache storage backends, switchable via config. Beyond the stateless regex checks, the `identity` module adds **session hijack / unusual login / data tamper / login brute-force lockout** detection — cross-request checks that cover both cookie sessions and session tokens (see "Identity Detection"). It also ships encoding normalization (defeating URL-encoding, fullwidth-character and HTML-entity bypasses) and security response header injection. Framework middlewares and the framework-free `security_guard()` run the same pipeline and expose the same capabilities.
+Security PHP is a lightweight PHP security middleware that detects common web attack payloads through regex pattern matching and structural analysis. Each detector is independently configurable (enable/disable + block/log mode), with IP whitelisting (IPv4/IPv6 CIDR), IP attack escalation blacklist (5 attempts/60s → 15min ban), field whitelisting, log rotation, and deduplication. Detectors can return custom HTTP status codes (405/413/415, etc.). Persistent data supports File/Redis/Cache storage backends, switchable via config. Beyond the stateless regex checks, the `identity` module adds **session hijack / unusual login / data tamper / login brute-force lockout** detection — cross-request checks that cover both cookie sessions and session tokens (see "Identity Detection"). It also ships encoding normalization (defeating URL-encoding, fullwidth-character and HTML-entity bypasses) and security response header injection. When a request is blocked, a browser receives an HTML block page with the mascot while API clients keep getting plain text. Framework middlewares and the framework-free `security_guard()` run the same pipeline and expose the same capabilities.
 
 ### Supported Attack Types
 
@@ -244,8 +261,26 @@ The config file lives at `config/security.php`. All options are documented with 
 ```php
 'block_status_code' => 403,   // default HTTP status. When a detector specifies a custom code (405/413/415),
                               // SecurityGuard::blockStatusCode($threats) prioritizes the detector's code
-'block_message'     => 'Request blocked by security policy',
+'block_message'     => 'Request blocked by security policy', // plain-text body
 ```
+
+The **body shape follows the `Accept` header**; both paths carry the same verdict:
+
+| Client | Body |
+|---|---|
+| `Accept` contains `text/html` (a browser) | HTML block page: mascot + status + the detector names that fired |
+| Everything else (API / curl / fetch / mini-programs) | the plain-text `block_message` above |
+
+The page is rendered by `src/BlockPage.php`. It lists **detector names only** — payloads and regex
+details stay in the log — escapes the message and the names, and sets `noindex`. To turn it off and
+give every client plain text:
+
+```php
+'block_page' => ['enabled' => false],
+```
+
+A config file without the `block_page` key is treated as **enabled** (no edit needed for existing
+installs); either way, non-browser clients behave exactly as before.
 
 ### Security Headers
 
@@ -437,6 +472,7 @@ security-php/
 │   ├── Logger.php                        # Attack log: atomic writes / rotation / dedup / CRLF defence
 │   ├── ThreatResult.php                  # Threat value object
 │   ├── helpers.php                       # Global security_guard() / security_scan_current_request() — framework-free entry point, same pipeline as the middlewares
+│   ├── BlockPage.php                     # HTML block page: mascot + status + detector names (browsers only)
 │   ├── Composer/Installer.php            # composer-plugin: publishes config on install
 │   ├── Detector/                         # 31 stateless detectors
 │   │   ├── AbstractRegexDetector.php     #   Regex base class (25 detectors extend it)
@@ -459,18 +495,25 @@ security-php/
 │   ├── Thinkphp/SecurityMiddleware.php
 │   └── Hyperf/SecurityMiddleware.php
 ├── config/security.php                   # Default configuration (every option commented)
-├── tests/                                # 427 tests, 1041 assertions
-│   ├── Core/                             #   Facade / chain / storage / logger / identity / features
+├── tests/                                # 437 tests, 29542 assertions
+│   ├── Core/                             #   Facade / chain / storage / logger / identity / block page / features
 │   ├── Detector/                         #   Full detector regression + edge cases
-│   ├── Middleware/                       #   End-to-end for all four framework adapters
-│   └── Middleware/                       #   All four adapters
-├── docs/                                 # Design docs, code review reports, test reports
+│   └── Middleware/                       #   End-to-end for all four framework adapters
+├── docs/
+│   ├── mascot.svg                        # Project mascot, 小盾 (Shieldy)
+│   ├── svg/                              # Architecture / feature / lifecycle diagrams
+│   ├── code-review-report-*.md           # Code review reports
+│   └── test-report-*.md                  # Test reports
 ├── scripts/release.sh                    # Release script
 ├── phpunit.xml
 └── composer.json
 ```
 
 ### Architecture
+
+<img src="./docs/svg/architecture.svg" alt="Security PHP architecture: entry layer → SecurityGuard facade → detectors → pass / block" width="1000" />
+
+The same diagram as text (easier to copy and search):
 
 ```
 HTTP Request
@@ -513,6 +556,26 @@ HTTP Request
 ```
 
 > The **31 Detectors** box is the regex detectors inside `DetectorChain`. The four identity checks are not counted among them — they need cross-request state, so they run outside the chain in `IdentityGuard` and are merged into the same threat list (sharing logging, dedup, and block/log mode). `ip_blacklist` is likewise outside the chain; `SecurityGuard` calls it directly.
+
+### Feature Design
+
+<img src="./docs/svg/features.svg" alt="Security PHP feature design: 31 in-chain detectors in five groups, plus 5 cross-request checks and cross-cutting capabilities" width="1040" />
+
+The detectors split into five groups by attack surface (10 + 9 + 4 + 5 + 3 = 31). All of them depend on
+nothing but the current request, so they can run in any order and be enabled or disabled in any
+combination. The four identity checks and the IP escalation blacklist — 5 items — need cross-request
+state, so they run outside the regex chain, invoked by `IdentityGuard` / `IpBlacklist`. Their threats
+join the same result list and share logging, dedup and the block/log decision.
+
+### Request Lifecycle
+
+<img src="./docs/svg/lifecycle.svg" alt="Security PHP request lifecycle: from extraction to pass or block" width="900" />
+
+Three short-circuits are worth remembering: an **IP whitelist** hit passes immediately, an **active
+ban** returns 403 immediately, and neither enters the detection chain — so whitelisted machines and
+banned ones both cost nothing. Once a threat is found the request is logged first, and only then does
+the block decision run: `log`-mode threats never count toward the IP escalation blacklist, only
+`block`-mode ones do.
 
 ### Design Decisions
 
@@ -564,6 +627,7 @@ Array values are JSON-encoded as strings for detector scanning. Field names use 
 | Encoding normalization | NormalizationScanner | URL / double-encoding, fullwidth and HTML entities each decoded once and rescanned, hits tagged `[decoded:xxx]`; cheap pre-checks keep unencoded requests free |
 | Account hashing | LoginLockout | Lock keys and threat payloads carry only `sha256(user_id)` — no plaintext account reaches storage or logs |
 | Security headers | SecurityGuard::securityHeaders() | nosniff / X-Frame-Options etc. injected on both normal and blocked responses; empty-valued headers skipped |
+| Block page escaping | BlockPage | Message and detector names always run through `htmlspecialchars`; only detector names are shown, payloads and regex detail stay in the log; page carries `noindex` |
 | Default log mode | config | High-FP detectors default to record-only |
 
 **4. Pluggable Storage Abstraction**
@@ -658,7 +722,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (427 tests, 1041 assertions)
+OK (437 tests, 29542 assertions)
 ```
 
 ## License

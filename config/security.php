@@ -446,8 +446,19 @@ return [
     // HTTP 状态码，通常使用 403（禁止访问）或 406（不可接受）
     'block_status_code' => 403,
 
-    // 返回给客户端的内容，{type} 会被替换为攻击类型标识
+    // 返回给客户端的纯文本内容（API / curl 等客户端收到的就是这一行）
     'block_message' => 'Request blocked by security policy',
+
+    /*
+     * HTML 拦截页（项目宠物「小盾」）
+     * enabled=true 时，浏览器请求（Accept 含 text/html）被拦截后返回一页 HTML：
+     * 小盾 + 状态码 + 命中的检测器名称。API / curl / fetch 等客户端始终收到上面的
+     * 纯文本 block_message，不受此开关影响。
+     * 页面只展示检测器名称，载荷与正则细节仍然只进日志。
+     */
+    'block_page' => [
+        'enabled' => true,
+    ],
 
     /*
      * 安全响应头

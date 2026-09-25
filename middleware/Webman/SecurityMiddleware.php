@@ -56,7 +56,7 @@ class SecurityMiddleware implements MiddlewareInterface
             'file'   => $files,
         ]);
 
-        $threats = SecurityGuard::guard($data, [
+        $meta = [
             'ip'              => $request->getRealIp() ?? '0.0.0.0',
             'method'          => $request->method(),
             'uri'             => $request->path(),
@@ -64,6 +64,7 @@ class SecurityMiddleware implements MiddlewareInterface
             'content_type'    => $request->header('content-type') ?? '',
             'origin'          => $request->header('origin') ?? '',
             'host'            => $request->header('host') ?? '',
+            'accept'          => $request->header('accept') ?? '',
             'x_forwarded_for' => $request->header('x-forwarded-for') ?? '',
             'transfer_encoding' => $request->header('transfer-encoding') ?? '',
             // Session identity comes from the request, not from $data: the
@@ -77,16 +78,19 @@ class SecurityMiddleware implements MiddlewareInterface
                 'x-token'       => (string) ($request->header('x-token') ?? ''),
                 'x-auth-token'  => (string) ($request->header('x-auth-token') ?? ''),
             ],
-        ]);
+        ];
+
+        $threats = SecurityGuard::guard($data, $meta);
 
         $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
+            [$contentType, $body] = SecurityGuard::blockResponse($threats, $meta);
             return new Response(
                 $block['status'],
-                array_merge(['Content-Type' => 'text/plain; charset=utf-8'], $securityHeaders),
-                $block['message']
+                array_merge(['Content-Type' => $contentType], $securityHeaders),
+                $body
             );
         }
 

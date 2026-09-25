@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 780" width="1040" height="780"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
+     role="img" aria-labelledby="featTitle featDesc">
+  <title id="featTitle">Security PHP 功能设计</title>
+  <desc id="featDesc">31 个链内检测器按注入、协议与请求、HTTP 协议层、数据与序列化、文件与敏感数据五组划分，另有 5 项链外检测（4 项身份校验 + IP 升级黑名单），底部为编码归一化、安全响应头、日志、存储等横切能力。</desc>
+
+  <rect width="1040" height="780" fill="#FFFFFF"/>
+  <text x="40" y="46" font-size="26" font-weight="700" fill="#0F172A">Security PHP · 功能设计</text>
+  <text x="40" y="72" font-size="13" fill="#64748B">31 个无状态检测器（链内）+ 5 项跨请求检测（链外）；每个检测器独立配置 enabled 与 block / log 模式</text>
+
+  <!-- ══════════ 卡片 1：注入类攻击 ══════════ -->
+  <rect x="40" y="100" width="304" height="264" rx="12" fill="#FFFFFF" stroke="#FCA5A5" stroke-width="1.5"/>
+  <rect x="40" y="100" width="304" height="44" rx="12" fill="#FEF2F2"/>
+  <rect x="40" y="122" width="304" height="22" fill="#FEF2F2"/>
+  <text x="56" y="128" font-size="14.5" font-weight="700" fill="#991B1B">注入类攻击</text>
+  <text x="328" y="128" font-size="12" fill="#DC2626" text-anchor="end">10 项</text>
+  <g font-size="12" fill="#334155">
+    <rect x="56" y="162" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="182">XSS 跨站脚本</text>
+    <rect x="198" y="162" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="182">SQL 注入</text>
+
+    <rect x="56" y="200" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="220">命令注入</text>
+    <rect x="198" y="200" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="220">NoSQL 注入</text>
+
+    <rect x="56" y="238" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="258">LDAP 注入</text>
+    <rect x="198" y="238" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="258">XPATH 注入</text>
+
+    <rect x="56" y="276" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="296">JNDI 注入</text>
+    <rect x="198" y="276" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="296">SSI 服务端包含</text>
+
+    <rect x="56" y="314" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="334">GraphQL 注入</text>
+    <rect x="198" y="314" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="334">SSTI 模板注入</text>
+  </g>
+
+  <!-- ══════════ 卡片 2：协议与请求攻击 ══════════ -->
+  <rect x="368" y="100" width="304" height="264" rx="12" fill="#FFFFFF" stroke="#FDBA74" stroke-width="1.5"/>
+  <rect x="368" y="100" width="304" height="44" rx="12" fill="#FFF7ED"/>
+  <rect x="368" y="122" width="304" height="22" fill="#FFF7ED"/>
+  <text x="384" y="128" font-size="14.5" font-weight="700" fill="#9A3412">协议与请求攻击</text>
+  <text x="656" y="128" font-size="12" fill="#EA580C" text-anchor="end">9 项</text>
+  <g font-size="12" fill="#334155">
+    <rect x="384" y="162" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="182">SSRF 请求伪造</text>
+    <rect x="526" y="162" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="538" y="182">XXE 实体注入</text>
+
+    <rect x="384" y="200" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="220">响应头注入</text>
+    <rect x="526" y="200" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="538" y="220">Host 头攻击</text>
+
+    <rect x="384" y="238" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="258">请求走私</text>
+    <rect x="526" y="238" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="538" y="258">开放重定向</text>
+
+    <rect x="384" y="276" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="296">CORS 绕过</text>
+    <rect x="526" y="276" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="538" y="296">WebSocket 劫持</text>
+
+    <rect x="384" y="314" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="334">DNS 重绑定</text>
+  </g>
+
+  <!-- ══════════ 卡片 3：HTTP 协议层校验 ══════════ -->
+  <rect x="696" y="100" width="304" height="264" rx="12" fill="#FFFFFF" stroke="#67E8F9" stroke-width="1.5"/>
+  <rect x="696" y="100" width="304" height="44" rx="12" fill="#ECFEFF"/>
+  <rect x="696" y="122" width="304" height="22" fill="#ECFEFF"/>
+  <text x="712" y="128" font-size="14.5" font-weight="700" fill="#155E75">HTTP 协议层校验</text>
+  <text x="984" y="128" font-size="12" fill="#0891B2" text-anchor="end">4 项</text>
+  <g font-size="12" fill="#334155">
+    <rect x="712" y="162" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="724" y="182">HTTP 方法校验</text>
+    <rect x="854" y="162" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="866" y="182">请求体大小 413</text>
+
+    <rect x="712" y="200" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="724" y="220">Content-Type 校验</text>
+    <rect x="854" y="200" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="866" y="220">CSRF Origin</text>
+  </g>
+  <text x="712" y="262" font-size="11.5" fill="#64748B">方法 / 体积 / 类型校验直接读 $_SERVER，</text>
+  <text x="712" y="280" font-size="11.5" fill="#64748B">非法请求由检测器自带状态码短路：</text>
+  <text x="712" y="298" font-size="11.5" fill="#64748B">405 方法不允许 · 413 体积超限 · 415 类型不支持</text>
+  <text x="712" y="322" font-size="11.5" fill="#64748B">认证 / 业务逻辑在执行前即被拦下</text>
+
+  <!-- ══════════ 卡片 4：数据与序列化 ══════════ -->
+  <rect x="40" y="396" width="304" height="264" rx="12" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1.5"/>
+  <rect x="40" y="396" width="304" height="44" rx="12" fill="#F5F3FF"/>
+  <rect x="40" y="418" width="304" height="22" fill="#F5F3FF"/>
+  <text x="56" y="424" font-size="14.5" font-weight="700" fill="#5B21B6">数据与序列化攻击</text>
+  <text x="328" y="424" font-size="12" fill="#7C3AED" text-anchor="end">5 项</text>
+  <g font-size="12" fill="#334155">
+    <rect x="56" y="458" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="478">PHP 反序列化</text>
+    <rect x="198" y="458" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="478">CSV 公式注入</text>
+
+    <rect x="56" y="496" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="516">邮件头注入</text>
+    <rect x="198" y="496" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="210" y="516">JWT 攻击</text>
+
+    <rect x="56" y="534" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="68" y="554">原型污染</text>
+  </g>
+  <text x="56" y="592" font-size="11.5" fill="#64748B">JWT 按结构解码分析（alg: none、kid 注入、</text>
+  <text x="56" y="610" font-size="11.5" fill="#64748B">空签名），不做简单关键字匹配</text>
+
+  <!-- ══════════ 卡片 5：文件与敏感数据 ══════════ -->
+  <rect x="368" y="396" width="304" height="264" rx="12" fill="#FFFFFF" stroke="#F9A8D4" stroke-width="1.5"/>
+  <rect x="368" y="396" width="304" height="44" rx="12" fill="#FDF2F8"/>
+  <rect x="368" y="418" width="304" height="22" fill="#FDF2F8"/>
+  <text x="384" y="424" font-size="14.5" font-weight="700" fill="#9D174D">文件与敏感数据</text>
+  <text x="656" y="424" font-size="12" fill="#DB2777" text-anchor="end">3 项</text>
+  <g font-size="12" fill="#334155">
+    <rect x="384" y="458" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="478">路径遍历</text>
+    <rect x="526" y="458" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="538" y="478">恶意文件上传</text>
+
+    <rect x="384" y="496" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="396" y="516">敏感数据泄露</text>
+  </g>
+  <text x="384" y="554" font-size="11.5" fill="#64748B">upload 不看扩展名是否在白名单内：文件头</text>
+  <text x="384" y="572" font-size="11.5" fill="#64748B">1 MB 内出现 &lt;?php / &lt;?= 即判 critical，</text>
+  <text x="384" y="590" font-size="11.5" fill="#64748B">压缩包与 Office 文档因此同样被拦</text>
+  <text x="384" y="616" font-size="11.5" fill="#64748B">data_leak 的敏感值在日志中做掩码</text>
+
+  <!-- ══════════ 卡片 6：链外检测 ══════════ -->
+  <rect x="696" y="396" width="304" height="264" rx="12" fill="#FFFFFF" stroke="#6EE7B7" stroke-width="1.5"/>
+  <rect x="696" y="396" width="304" height="44" rx="12" fill="#ECFDF5"/>
+  <rect x="696" y="418" width="304" height="22" fill="#ECFDF5"/>
+  <text x="712" y="424" font-size="14.5" font-weight="700" fill="#065F46">链外检测 · 需应用接入</text>
+  <text x="984" y="424" font-size="12" fill="#059669" text-anchor="end">5 项</text>
+  <g font-size="12" fill="#334155">
+    <rect x="712" y="458" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="724" y="478">会话劫持 401</text>
+    <rect x="854" y="458" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="866" y="478">异地登录 401</text>
+
+    <rect x="712" y="496" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="724" y="516">数据篡改 403</text>
+    <rect x="854" y="496" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="866" y="516">暴力破解锁定 429</text>
+
+    <rect x="712" y="534" width="130" height="30" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+    <text x="724" y="554">IP 升级黑名单 403</text>
+  </g>
+  <text x="712" y="592" font-size="11.5" fill="#64748B">跨请求状态放在 Storage 里，因此不在正则</text>
+  <text x="712" y="610" font-size="11.5" fill="#64748B">链内；威胁并入同一份结果列表，共用日志、</text>
+  <text x="712" y="628" font-size="11.5" fill="#64748B">去重与 block / log 决策。未接入则全程静默</text>
+
+  <!-- ══════════ 横切能力 ══════════ -->
+  <rect x="40" y="684" width="960" height="64" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="60" y="706" font-size="12" font-weight="600" fill="#475569">横切能力</text>
+  <text x="60" y="726" font-size="11.5" fill="#64748B">编码归一化预处理（URL / 双重编码 / 全角 / HTML 实体，解码变体与原值一起扫描，无编码请求零开销）· 安全响应头注入（拦截与放行两条路径都带）</text>
+  <text x="60" y="742" font-size="11.5" fill="#64748B">攻击日志（flock 原子写入 / 按大小轮转 / 5 秒去重 / CRLF 防护）· 可插拔存储 File / Redis / Cache · 小盾 HTML 拦截页 · Composer 安装器自动发布配置</text>
+</svg>

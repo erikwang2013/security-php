@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-labelledby="mascotTitle mascotDesc">
+  <title id="mascotTitle">小盾 — Security PHP 项目宠物</title>
+  <desc id="mascotDesc">一块带笑脸的蓝色盾牌，手持放大镜，代表按请求拦截并检测攻击的安全守卫。</desc>
+
+  <defs>
+    <linearGradient id="shieldFill" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#5B9BFF"/>
+      <stop offset="1" stop-color="#1E4FD8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 盾牌主体 -->
+  <path d="M100 18 C118 28 142 37 160 41 C165 42 168 46 168 51 C168 106 148 152 100 180 C52 152 32 106 32 51 C32 46 35 42 40 41 C58 37 82 28 100 18 Z"
+        fill="url(#shieldFill)"/>
+
+  <!-- 内圈高光 -->
+  <path d="M100 32 C116 40 138 48 155 52 C158 53 160 56 160 60 C160 106 143 146 100 171 C57 146 40 106 40 60 C40 56 42 53 45 52 C62 48 84 40 100 32 Z"
+        fill="none" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="3"/>
+
+  <!-- 眼睛 -->
+  <ellipse cx="76" cy="84" rx="11" ry="13" fill="#FFFFFF"/>
+  <ellipse cx="124" cy="84" rx="11" ry="13" fill="#FFFFFF"/>
+  <circle cx="78" cy="86" r="5.5" fill="#12305F"/>
+  <circle cx="126" cy="86" r="5.5" fill="#12305F"/>
+  <circle cx="75.5" cy="82.5" r="2" fill="#FFFFFF"/>
+  <circle cx="123.5" cy="82.5" r="2" fill="#FFFFFF"/>
+
+  <!-- 腮红 -->
+  <circle cx="58" cy="101" r="7" fill="#FF8FA3" opacity="0.38"/>
+  <circle cx="142" cy="101" r="7" fill="#FF8FA3" opacity="0.38"/>
+
+  <!-- 微笑 -->
+  <path d="M88 103 Q100 115 112 103" fill="none" stroke="#12305F" stroke-width="4.5" stroke-linecap="round"/>
+
+  <!-- 放大镜：检测 -->
+  <circle cx="100" cy="139" r="15" fill="#FFFFFF" fill-opacity="0.18" stroke="#FFFFFF" stroke-width="4.5"/>
+  <path d="M110.5 149.5 L119 158" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -7,9 +7,34 @@ declare(strict_types=1);
  *
  * Global helper functions for manual security scanning.
  * No framework dependency — works with plain PHP arrays.
+ *
+ * This file is also the entry point of a Composer-free install: copy src/ and
+ * config/ into the project and `require 'src/helpers.php'`. In a Composer
+ * install the PSR-4 map is already registered, the class below resolves, and
+ * nothing extra happens here.
  */
 
 use Erikwang2013\Security\SecurityGuard;
+
+if (!class_exists(SecurityGuard::class)) {
+    // No Composer: bring our own PSR-4 loader. Longest prefix wins, so the
+    // middleware/ tree stays reachable for a framework copied in whole.
+    spl_autoload_register(static function (string $class): void {
+        $maps = [
+            'Erikwang2013\\Security\\Middleware\\' => dirname(__DIR__) . '/middleware/',
+            'Erikwang2013\\Security\\' => __DIR__ . '/',
+        ];
+        foreach ($maps as $prefix => $dir) {
+            if (str_starts_with($class, $prefix)) {
+                $file = $dir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+                if (is_file($file)) {
+                    require $file;
+                }
+                return;
+            }
+        }
+    });
+}
 
 if (!function_exists('security_scan')) {
     /**
@@ -69,6 +94,7 @@ if (!function_exists('security_scan_current_request')) {
             'content_type'    => $_SERVER['CONTENT_TYPE'] ?? '',
             'origin'          => $_SERVER['HTTP_ORIGIN'] ?? '',
             'host'            => $_SERVER['HTTP_HOST'] ?? '',
+            'accept'          => $_SERVER['HTTP_ACCEPT'] ?? '',
             'x_forwarded_for' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '',
             'transfer_encoding' => $_SERVER['HTTP_TRANSFER_ENCODING'] ?? '',
             // Session identity is read from here, not from $data: the merge above
@@ -115,8 +141,12 @@ if (!function_exists('security_guard')) {
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
             http_response_code($block['status']);
-            header('Content-Type: text/plain; charset=utf-8');
-            die($block['message']);
+            // HTML page for browsers, plain text for everything else
+            [$contentType, $body] = SecurityGuard::blockResponse($threats, [
+                'accept' => $_SERVER['HTTP_ACCEPT'] ?? '',
+            ]);
+            header('Content-Type: ' . $contentType);
+            die($body);
         }
     }
 }

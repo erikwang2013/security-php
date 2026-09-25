@@ -240,6 +240,40 @@ class SecurityGuard
     }
 
     /**
+     * Content type + body for the block response.
+     *
+     * Plain text by default; the HTML page (with the mascot) only for clients
+     * that sent `Accept: text/html` — browsers navigating, not API clients.
+     *
+     * @param  ThreatResult[] $threats
+     * @param  array<string, mixed> $meta request meta, uses 'accept'
+     * @return array{0: string, 1: string} [content type, body]
+     */
+    public static function blockResponse(array $threats, array $meta = []): array
+    {
+        $message = self::blockMessage();
+        $config = self::getConfig();
+
+        // Missing key = enabled: a config published before this feature existed
+        // still gets the page, and only browsers ever reach it.
+        if (empty($config['block_page']['enabled'] ?? true) || !BlockPage::wantsHtml((string) ($meta['accept'] ?? ''))) {
+            return ['text/plain; charset=utf-8', $message];
+        }
+
+        $types = [];
+        foreach ($threats as $threat) {
+            if ($threat instanceof ThreatResult) {
+                $types[] = $threat->type;
+            }
+        }
+
+        return [
+            'text/html; charset=utf-8',
+            BlockPage::render(self::blockStatusCode($threats), $message, $types),
+        ];
+    }
+
+    /**
      * Security response headers for middleware to append to every response.
      * Empty when disabled; blank values are opt-in placeholders, so CSP/HSTS
      * stay off until the site actually configures them.
@@ -270,8 +304,17 @@ class SecurityGuard
     private static function getConfig(): array
     {
         if (self::$config === null) {
-            $defaultConfig = require dirname(__DIR__) . '/config/security.php';
-            self::init($defaultConfig);
+            // A plain `require` here would be an uncatchable compile error that
+            // prints the absolute path; the config ships with the package, so
+            // this only fires if it was deleted or the install is broken.
+            $path = dirname(__DIR__) . '/config/security.php';
+            if (!is_file($path)) {
+                throw new \RuntimeException(
+                    'Security PHP: config file not found at ' . $path
+                    . '. Restore config/security.php or call SecurityGuard::init($config) yourself.',
+                );
+            }
+            self::init(require $path);
         }
         return self::$config;
     }

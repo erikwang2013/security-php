@@ -2,15 +2,33 @@
 
 > [English Documentation](README_EN.md)
 
-基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架，也可**脱离框架**用全局函数直接接入。
+基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架，也可**脱离框架**用全局函数直接接入。项目宠物是**小盾** —— 一块举着放大镜、站在门口挡攻击的蓝色盾牌。
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 ---
 
+## 项目宠物：小盾
+
+<img src="./docs/mascot.svg" alt="小盾 —— Security PHP 项目宠物" width="130" align="right" />
+
+小盾是一块蓝色盾牌，表情友好，手里举着放大镜：**盾**代表拦下来，**放大镜**代表看得见。矢量图 `docs/mascot.svg`，透明背景，任意尺寸不失真。
+
+它出现在三个地方：
+
+| 位置 | 文件 | 说明 |
+|---|---|---|
+| README / 文档 | `docs/mascot.svg` | 项目形象，可当头像或配图 |
+| 架构图 / 生命周期图 | `docs/svg/*.svg` | 「拦截响应」环节里的小盾 |
+| **被拦截的浏览器页面** | `src/BlockPage.php` | 真实生效的代码，见「拦截配置」 |
+
+小盾只负责出镜，不参与任何判定 —— 它的有无不会改变检测结果。
+
+---
+
 ## 项目说明
 
-Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。在无状态的正则检测之外，`identity` 模块另提供**会话劫持 / 异地登录 / 数据篡改 / 登录暴力破解锁定**四类跨请求检测，Cookie 与会话 Token 登录都在覆盖范围内（见「身份维度检测」）。此外内置编码归一化预处理（对抗 URL 编码、全角字符、HTML 实体绕过）与安全响应头注入。框架中间件与无框架全局函数 `security_guard()` 走同一条链路、能力一致。
+Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配和结构分析检测常见的 Web 攻击载荷。每个检测器独立可配置（启用/禁用 + 拦截/日志模式），支持 IP 白名单（含 IPv4/IPv6 CIDR）、IP 攻击升级黑名单（5次/60s → 封禁15分钟）、字段白名单、日志轮转和去重。检测器可返回自定义 HTTP 状态码（405/413/415 等）。持久化数据支持 File/Redis/Cache 三种存储后端，可按需切换。在无状态的正则检测之外，`identity` 模块另提供**会话劫持 / 异地登录 / 数据篡改 / 登录暴力破解锁定**四类跨请求检测，Cookie 与会话 Token 登录都在覆盖范围内（见「身份维度检测」）。此外内置编码归一化预处理（对抗 URL 编码、全角字符、HTML 实体绕过）与安全响应头注入。框架中间件与无框架全局函数 `security_guard()` 走同一条链路、能力一致。被拦下时，浏览器收到的是一页带小盾的 HTML 拦截页，API 客户端收到的仍是纯文本。
 
 ### 支持的攻击类型
 
@@ -249,8 +267,23 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
 ```php
 'block_status_code' => 403,   // 默认 HTTP 状态码。当检测器返回自定义状态码时（如 405/413/415），
                               // SecurityGuard::blockStatusCode($threats) 优先使用检测器的状态码
-'block_message'     => 'Request blocked by security policy',
+'block_message'     => 'Request blocked by security policy', // 纯文本正文
 ```
+
+拦截响应的**正文形态按 `Accept` 头自动区分**，两条路径都是同一份判定结果：
+
+| 客户端 | 正文 |
+|---|---|
+| `Accept` 含 `text/html`（浏览器直接访问） | HTML 拦截页：小盾 + 状态码 + 命中的检测器名称 |
+| 其余（API / curl / fetch / 小程序） | 上面那行 `block_message` 纯文本 |
+
+拦截页由 `src/BlockPage.php` 渲染，只展示**检测器名称**，载荷与正则细节仍然只写日志。它对消息与检测器名做 HTML 转义，带 `noindex`，并跟随系统深浅色。要关掉它、让所有客户端一律收纯文本：
+
+```php
+'block_page' => ['enabled' => false],
+```
+
+配置文件中不存在 `block_page` 键时按**开启**处理（旧配置文件不必改动）；无论开关如何，非浏览器客户端的行为都不变。
 
 ### 安全响应头
 
@@ -440,6 +473,7 @@ security-php/
 │   ├── Logger.php                        # 攻击日志：原子写入 / 轮转 / 去重 / CRLF 防护
 │   ├── ThreatResult.php                  # 威胁结果值对象
 │   ├── helpers.php                       # 全局函数 security_guard() / security_scan_current_request()，无框架入口，与中间件同链路
+│   ├── BlockPage.php                      # HTML 拦截页：小盾 + 状态码 + 命中的检测器名（仅浏览器）
 │   ├── Composer/Installer.php            # composer-plugin：安装时发布配置
 │   ├── Detector/                         # 31 个无状态检测器
 │   │   ├── AbstractRegexDetector.php     #   正则基类（25 个检测器继承它）
@@ -462,18 +496,25 @@ security-php/
 │   ├── Thinkphp/SecurityMiddleware.php
 │   └── Hyperf/SecurityMiddleware.php
 ├── config/security.php                   # 默认配置（每项均有注释说明）
-├── tests/                                # 427 个测试、1041 条断言
-│   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 特性
+├── tests/                                # 437 个测试、29542 条断言
+│   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 拦截页 / 特性
 │   ├── Detector/                         #   全检测器回归 + 边界用例
-│   ├── Middleware/                       #   四个框架适配器端到端
-│   └── Middleware/                       #   四个适配器
-├── docs/                                 # 设计文档、代码评审报告、测试报告
+│   └── Middleware/                       #   四个框架适配器端到端
+├── docs/
+│   ├── mascot.svg                        # 项目宠物「小盾」
+│   ├── svg/                              # 架构 / 功能 / 生命周期 三张设计图
+│   ├── code-review-report-*.md           # 代码评审报告
+│   └── test-report-*.md                  # 测试报告
 ├── scripts/release.sh                    # 发版脚本
 ├── phpunit.xml
 └── composer.json
 ```
 
 ### 架构
+
+<img src="./docs/svg/architecture.svg" alt="Security PHP 架构设计：入口层 → SecurityGuard 门面 → 检测体 → 放行 / 拦截" width="1000" />
+
+同一张图的文字版（便于复制与检索）：
 
 ```
 HTTP Request
@@ -517,6 +558,18 @@ HTTP Request
 ```
 
 > 图里的 **31 Detectors** 是 `DetectorChain` 里的正则检测器；身份四项不算在内 —— 它们需要跨请求状态，因此放在链外，由 `IdentityGuard` 单独执行后并入同一份威胁列表（共用日志、去重与 block/log 模式）。`ip_blacklist` 同样不在链内，它由 `SecurityGuard` 直接调用。
+
+### 功能设计
+
+<img src="./docs/svg/features.svg" alt="Security PHP 功能设计：31 个链内检测器分五组，另有 5 项链外检测与横切能力" width="1040" />
+
+检测器按攻击面分五组（10 + 9 + 4 + 5 + 3 = 31），全部只依赖本次请求的数据，因此可以任意顺序执行、任意组合启停。身份四项与 IP 升级黑名单共 5 项需要跨请求状态，放在正则链之外，由 `IdentityGuard` / `IpBlacklist` 单独执行 —— 结果并入同一份威胁列表，日志、去重与 block/log 决策完全共用。
+
+### 请求生命周期
+
+<img src="./docs/svg/lifecycle.svg" alt="Security PHP 请求生命周期：从入口提取到放行或拦截的完整路径" width="900" />
+
+三个短路点值得记住：**IP 白名单**命中直接放行、**IP 封禁期**内直接 403，两者都不再进入检测链 —— 所以白名单里的机器零开销，被封禁的机器也零开销。检测到威胁后先写日志、再决定放行还是拦截：`log` 模式的威胁不会计入 IP 升级黑名单，只有 `block` 模式的才计数。
 
 ### 关键设计决策
 
@@ -569,6 +622,7 @@ class XssDetector extends AbstractRegexDetector
 | 编码归一化扫描 | NormalizationScanner | URL / 双重编码、全角、HTML 实体各解一次后重扫，命中标注 `[decoded:xxx]`；廉价预检确保无编码请求零开销 |
 | 账号哈希落盘 | LoginLockout | 锁定记录的 key 与威胁 payload 都只含 `sha256(user_id)`，明文账号不写存储与日志 |
 | 安全响应头 | SecurityGuard::securityHeaders() | 正常响应与拦截响应都注入 nosniff / X-Frame-Options 等头，值为空字符串的头自动跳过 |
+| 拦截页转义 | BlockPage | 拦截页里的消息与检测器名一律 `htmlspecialchars`，只展示检测器名，载荷与正则细节只进日志；页面带 `noindex` |
 | 默认 log 模式 | config | 高误报检测器默认仅记录不拦截 |
 
 **4. 可插拔存储抽象**
@@ -664,7 +718,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (427 tests, 1041 assertions)
+OK (437 tests, 29542 assertions)
 ```
 
 ## License

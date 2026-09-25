@@ -55,7 +55,7 @@ class SecurityMiddleware implements MiddlewareInterface
 
         $serverParams = $request->getServerParams();
 
-        $threats = SecurityGuard::guard($data, [
+        $meta = [
             'ip'              => $serverParams['remote_addr'] ?? '0.0.0.0',
             'method'          => $request->getMethod(),
             'uri'             => $request->getUri()->getPath(),
@@ -63,6 +63,7 @@ class SecurityMiddleware implements MiddlewareInterface
             'content_type'    => $request->getHeaderLine('Content-Type'),
             'origin'          => $request->getHeaderLine('Origin'),
             'host'            => $request->getHeaderLine('Host'),
+            'accept'          => $request->getHeaderLine('Accept'),
             'x_forwarded_for' => $request->getHeaderLine('X-Forwarded-For'),
             'transfer_encoding' => $request->getHeaderLine('Transfer-Encoding'),
             // Session identity comes from the request, not from $data: the
@@ -76,18 +77,21 @@ class SecurityMiddleware implements MiddlewareInterface
                 'x-token'       => $request->getHeaderLine('X-Token'),
                 'x-auth-token'  => $request->getHeaderLine('X-Auth-Token'),
             ],
-        ]);
+        ];
+
+        $threats = SecurityGuard::guard($data, $meta);
 
         $securityHeaders = SecurityGuard::securityHeaders();
 
         $block = SecurityGuard::blockDecision($threats);
         if ($block !== null) {
+            [$contentType, $body] = SecurityGuard::blockResponse($threats, $meta);
             $response = new \Hyperf\HttpMessage\Server\Response();
             // PSR-7: withHeader() is immutable, so reassign on each iteration
             $response = $response
                 ->withStatus($block['status'])
-                ->withHeader('Content-Type', 'text/plain; charset=utf-8')
-                ->withBody(new \Hyperf\HttpMessage\Stream\SwooleStream($block['message']));
+                ->withHeader('Content-Type', $contentType)
+                ->withBody(new \Hyperf\HttpMessage\Stream\SwooleStream($body));
             foreach ($securityHeaders as $name => $value) {
                 $response = $response->withHeader($name, $value);
             }
