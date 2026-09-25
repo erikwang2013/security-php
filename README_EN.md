@@ -107,7 +107,11 @@ Security PHP is a lightweight PHP security middleware that detects common web at
 composer require erikwang2013/security-php
 ```
 
-Requires PHP >= 8.0.
+Requires PHP >= 8.0, and no PHP extension (no mbstring; `redis` only when the Redis storage backend is selected).
+
+> Composer 2.2+ asks once whether to let this package run plugin code (`allow-plugins`) — the plugin only publishes the default config into your framework's config directory. Answer `y`; to refuse, add `--no-plugins` and copy the config yourself as described per framework below.
+
+**Composer is optional too**: copy `src/`, `config/` and `prepend.php` into your project and `require` one file — see "Plain PHP (No Composer)".
 
 ---
 
@@ -139,6 +143,28 @@ security_guard();
 - Feeds `cookies` / `user_agent` / `authorization`·`x-token`·`x-auth-token` into the identity layer, so **session-hijack and token-login detection work here too**, with no extra configuration. Under Apache+CGI `Authorization` never reaches `$_SERVER`, so it falls back to `getallheaders()`.
 
 `security_guard()` only covers the automatic half; `recordLogin()` / `recordFailedLogin()` / `isLockedOut()` still belong in your own login branches, exactly as with the frameworks (see "Identity Checks").
+
+### Plain PHP (No Composer)
+
+No Composer required: copy `src/`, `config/` and `prepend.php` into your project, then pick one.
+
+```php
+// 1. Wire it up in your front controller — same pipeline as the framework middlewares
+require '/path/to/security-php/src/helpers.php'; // ships its own PSR-4 loader without Composer
+security_guard();
+```
+
+```ini
+; 2. Or let PHP prepend it — zero changes to application code
+; php.ini / php-fpm pool
+auto_prepend_file = /path/to/security-php/prepend.php
+; .htaccess
+; php_value auto_prepend_file "/path/to/security-php/prepend.php"
+; nginx + php-fpm
+; fastcgi_param PHP_VALUE "auto_prepend_file=/path/to/security-php/prepend.php"
+```
+
+`prepend.php` reads the packaged `config/security.php` by default; to use your own copy, point the `SECURITY_CONFIG` environment variable at it so a package upgrade cannot overwrite your settings. CLI (cron, queue workers, scripts) is skipped — there is no HTTP request to scan there.
 
 ### Laravel
 
@@ -341,11 +367,11 @@ Log format:
     'enabled'   => true,
     'urldecode' => true, // decode values containing %
     'fullwidth' => true, // fullwidth ASCII → halfwidth
-    'entities'  => true, // decode HTML entities when the value contains &# or &amp;
+    'entities'  => true, // decode HTML entities when the value contains & (named forms included)
 ],
 ```
 
-Regex detectors only ever see the raw value, so an attacker encoding a payload once (`%3Cscript%3E`), twice (`%2527`), or reshaping it (fullwidth `Ｓｅｌｅｃｔ`, entity `&#60;script&#62;`) slips past. With this on, values carrying an encoding signal are decoded one extra time and **both the decoded form and the original are scanned**; a decoded hit is tagged `[decoded:xxx]` in the log `detail`.
+Regex detectors only ever see the raw value, so an attacker encoding a payload once (`%3Cscript%3E`), twice (`%2527`), or reshaping it (fullwidth `Ｓｅｌｅｃｔ`, entity `&#60;script&#62;` as well as the named form `&lt;script&gt;`) slips past. With this on, values carrying an encoding signal are decoded one extra time and **both the decoded form and the original are scanned**; a decoded hit is tagged `[decoded:xxx]` in the log `detail`.
 
 Each variant runs a cheap pre-check first (no `%` in the value means `urldecode` is never called), so unencoded requests pay nothing. **The trade-off**: legitimate text containing `%` (forms carrying URLs, search terms) can gain hits after decoding, so high-false-positive detectors are best left in `log` mode.
 
@@ -360,8 +386,8 @@ Session hijacking, unusual login, data tampering and login brute-force lockout s
         'cookie'  => 'laravel_session',                      // session cookie name; empty = token only
         'headers' => ['authorization', 'x-token', 'x-auth-token'], // token sources, first non-empty wins
         'bind'    => ['ua', 'ip'],                           // fingerprint factors, default UA + IP subnet
-        'ip_bits' => 24,                                     // subnet size the IP is normalised to
-        'ttl'     => 7200,                                   // idle time after which the binding is redone
+        'ip_bits' => 24,                                     // subnet size the IP is normalised to (::ffff:1.2.3.4 mapped addresses are treated as IPv4)
+        'ttl'     => 7200,                                   // idle time after which the binding is redone (record refreshed at most every ttl/2, so the real window reaches 1.5×ttl)
     ],
     'login' => [
         'ttl'        => 86400, // how long a login location is remembered
@@ -429,6 +455,8 @@ if ($threat !== null) { /* this attempt locked the account */ }
 
 When an IP triggers `max_attempts` attack detections within `window_seconds`, it is banned for `ban_duration_seconds`. All requests from banned IPs return 403 immediately.
 
+An entry whose counting window expired below the threshold is dropped, so the store does not grow with every IP that ever attacked; an active ban survives that window reset — further hits during the ban keep the remaining time. Foreign non-array data in the store is treated as "no record" and never yields a ban.
+
 ### Storage Configuration
 
 ```php
@@ -453,7 +481,9 @@ When an IP triggers `max_attempts` attack detections within `window_seconds`, it
 ],
 ```
 
-`file` stores data in a single JSON file with `flock` atomic writes. `redis` uses an externally-provided Redis instance for distributed shared storage. `cache` stores each key as an independent file, avoiding single-file write contention.
+`file` stores data in a single JSON file: writes take an exclusive lock and truncate in place, reads take a shared lock — an unlocked reader can catch the file right after truncation and read it as "no state yet" (a fresh session baseline, a reset failure count, a ban that does not exist). `redis` uses an externally-provided Redis instance for distributed shared storage and reads batches in one MGET instead of a round trip per key. `cache` stores each key as an independent file, avoiding single-file write contention.
+
+A failed write (directory not writable, disk full, JSON encoding failure) is reported once per path per process through `error_log` — silent failure means IP bans, lockouts and session binding all stop working with nothing to point at.
 
 ---
 
@@ -486,7 +516,7 @@ security-php/
 │   │   └── IpPrefix.php                  #   IP subnet normalization (IPv4 / IPv6)
 │   └── Storage/                          # Pluggable persistence
 │       ├── StorageInterface.php          #   Shared contract; IdentityGuard and IpBlacklist share one instance
-│       ├── FileStorage.php               #   Single JSON file + flock
+│       ├── FileStorage.php               #   Single JSON file: exclusive lock on write, shared lock on read, one error_log on failure
 │       ├── RedisStorage.php              #   Externally-injected \Redis instance
 │       └── CacheStorage.php              #   One file per key
 ├── middleware/                           # Framework adapters: extract request → call SecurityGuard → inject headers
@@ -495,8 +525,9 @@ security-php/
 │   ├── Thinkphp/SecurityMiddleware.php
 │   └── Hyperf/SecurityMiddleware.php
 ├── config/security.php                   # Default configuration (every option commented)
-├── tests/                                # 437 tests, 29542 assertions
-│   ├── Core/                             #   Facade / chain / storage / logger / identity / block page / features
+├── prepend.php                           # auto_prepend_file entry point: scans every request, app code untouched
+├── tests/                                # 451 tests, 31603 assertions
+│   ├── Core/                             #   Facade / chain / storage / logger / identity / block page / native install / features
 │   ├── Detector/                         #   Full detector regression + edge cases
 │   └── Middleware/                       #   End-to-end for all four framework adapters
 ├── docs/
@@ -504,7 +535,9 @@ security-php/
 │   ├── svg/                              # Architecture / feature / lifecycle diagrams
 │   ├── code-review-report-*.md           # Code review reports
 │   └── test-report-*.md                  # Test reports
-├── scripts/release.sh                    # Release script
+├── scripts/
+│   ├── release.sh                        # Release script
+│   └── benchmark.php                     # Scan cost benchmark, by request shape
 ├── phpunit.xml
 └── composer.json
 ```
@@ -577,6 +610,43 @@ banned ones both cost nothing. Once a threat is found the request is logged firs
 the block decision run: `log`-mode threats never count toward the IP escalation blacklist, only
 `block`-mode ones do.
 
+### Performance
+
+The scan runs on every request, so it has to be cheap. `php scripts/benchmark.php` reports the cost
+per request shape; below is an alternating before/after run on one machine (PHP 8.3, best of 300
+iterations each — absolute numbers move with the machine and its load, the ratios are the point):
+
+| Request shape | Before | After |
+|---|---|---|
+| 3 small fields | 8.9 ms | 2.5 ms |
+| Typical form · 10 fields (with a long CJK text) | 21.7 ms | 6.0 ms |
+| One 128 KB field | 16.4 ms | 12.4 ms |
+
+Three changes:
+
+**1. Regex prefilter.** The 25 regex detectors hold 250 patterns between them, and running them one
+by one costs thousands of `preg_match` calls per request. Patterns are now grouped by flag and each
+group gets a combined `(?:p1)|(?:p2)|…` gate: one match against it, and a definitive `0` skips the
+whole group; only a hit runs the individual patterns.
+
+The gate only subtracts — severity, detail and payload still come from the original pattern. Only a
+definitive "nothing here" skips work; `false` (backtrack limit, compile failure) falls back to
+running every pattern, so results are identical to matching one by one.
+`tests/Detector/PrefilterTest.php` pins that invariant against a wide corpus (every string literal in
+the test suite, every pattern body, boundary samples), 20k+ assertions.
+
+**2. Large values bypass the prefilter.** A combined alternation has to be attempted at every
+position, while a single pattern keeps its literal-prefix skip optimisation and wins from roughly
+16 KB up — so values over 8 KB (`GATE_MAX_LENGTH`) run the individual patterns directly.
+
+**3. Empty values never enter the scan loop.** Request metadata always contributes a few blank fields
+(no Content-Length on a GET), and an empty subject is a dead end for every pattern. No pattern in
+this library matches an empty string — also asserted in `PrefilterTest`.
+
+Two write paths that did nothing useful were fixed along the way: the session fingerprint no longer
+rewrites the whole record on every matching request (~15 ms each at 5000 sessions on the file
+backend), and Redis `all()` issues one `MGET` instead of a `GET` per key.
+
 ### Design Decisions
 
 **1. Abstract Detector Base Class**
@@ -619,12 +689,18 @@ Array values are JSON-encoded as strings for detector scanning. Field names use 
 | Regex error detection | AbstractRegexDetector | Logs to `error_log` on `preg_match === false` (malformed pattern) |
 | Log injection prevention | Logger::sanitize() | `\r\n` → `\\r\\n`, `|` → space |
 | Atomic log writes | Logger::log() | `fopen`+`flock`+`fwrite` — no TOCTOU race |
+| Rotation without clobbering | Logger::log() | Rotated name carries a second-resolution timestamp; a second rotation within the same second would collide — it gets a random suffix instead, so the earlier file is never renamed over |
+| Shared-lock reads | FileStorage::read() | Writes truncate in place, so reads take `LOCK_SH`: an unlocked reader may see the just-truncated empty file and treat it as "no state yet" |
+| Write-failure reporting | FileStorage | A failed persist (unwritable, encode failure) is `error_log`ged once per path per process; silent failure disables bans, lockouts and session binding with no trace |
 | Sensitive data masking | DataLeakDetector | AWS keys appear as `AKIAIOS***XAMPLE` in logs |
 | IP whitelist CIDR | SecurityGuard | IPv4 via `ip2long` + bitmask, IPv6 via `inet_pton` + binary comparison |
-| IP attack escalation blacklist | IpBlacklist | Per-IP attack counting within window, auto-ban, pluggable storage backends (File/Redis/Cache), `flock` atomic writes (File mode) |
+| IP attack escalation blacklist | IpBlacklist | Per-IP attack counting within window, auto-ban, pluggable storage backends (File/Redis/Cache), `flock` atomic writes (File mode); entries under the threshold are dropped once the window expires, and an active ban is never reset by a new window |
 | Credential redaction | IdentityGuard | Session IDs / tokens are persisted as `sha256` hashes only; logs carry `#` + the first 8 hash chars — plaintext never reaches storage or logs |
 | Signing key off-repo | config | `signing_key` comes from `getenv('SECURITY_SIGNING_KEY')` so no key enters version control; tamper detection silently disables when unset |
-| Encoding normalization | NormalizationScanner | URL / double-encoding, fullwidth and HTML entities each decoded once and rescanned, hits tagged `[decoded:xxx]`; cheap pre-checks keep unencoded requests free |
+| Encoding normalization | NormalizationScanner | URL / double-encoding, fullwidth and HTML entities (named forms like `&lt;` included) each decoded once and rescanned, hits tagged `[decoded:xxx]`; cheap pre-checks (look for `%` / look for `&`) keep unencoded requests free |
+| Locked state reads | FileStorage | Writers hold an exclusive lock, readers a shared one: a writer truncates in place, and an unlocked read can return an empty store — which every caller reads as "nothing bound yet", exactly how session-hijack detection goes quiet |
+| IPv4-mapped IPv6 | IpPrefix | `::ffff:203.0.113.5` is masked as IPv4; as IPv6 every dual-stack / Swoole client collapsed into the same `::/64` and the IP factor of the session fingerprint stopped discriminating |
+| Blacklist entry reaping | IpBlacklist | Sub-threshold counters are deleted once their window is gone (rotation of IPs otherwise grows the store forever); a ban that is still active survives the window rolling over; foreign non-array data is read as "no record", never as a ban |
 | Account hashing | LoginLockout | Lock keys and threat payloads carry only `sha256(user_id)` — no plaintext account reaches storage or logs |
 | Security headers | SecurityGuard::securityHeaders() | nosniff / X-Frame-Options etc. injected on both normal and blocked responses; empty-valued headers skipped |
 | Block page escaping | BlockPage | Message and detector names always run through `htmlspecialchars`; only detector names are shown, payloads and regex detail stay in the log; page carries `noindex` |
@@ -709,8 +785,13 @@ class MyCustomDetector implements DetectorInterface
 
 ### Dependencies
 
-- PHP >= 8.0
-- Zero external dependencies
+- PHP >= 8.0; 8.0 / 8.1 / 8.2 / 8.3 / 8.4 all verified (lint, detector runtime harness and the full
+  test suite green on 8.3 and 8.4)
+- Zero external dependencies and **no PHP extension requirements**: no mbstring, only PCRE / json /
+  SPL (the `redis` extension is needed only if you pick the Redis storage backend)
+- **No Composer required** — see "Plain PHP"
+- The test suite itself needs PHPUnit 12 and therefore PHP >= 8.3; that is a development constraint
+  only, not a runtime one
 
 ---
 
@@ -722,7 +803,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (437 tests, 29542 assertions)
+OK (451 tests, 31603 assertions)
 ```
 
 ## License

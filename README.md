@@ -108,7 +108,11 @@ Security PHP 是一个轻量级 PHP 安全中间件，通过正则模式匹配�
 composer require erikwang2013/security-php
 ```
 
-要求 PHP >= 8.0。
+要求 PHP >= 8.0，不需要任何 PHP 扩展（不依赖 mbstring，`redis` 仅在选择 Redis 存储时需要）。
+
+> Composer 2.2+ 会先问一句是否允许本包执行插件代码（`allow-plugins`）—— 这个插件只在安装时把默认配置发布到框架的配置目录。回答 `y` 即可；不想允许插件就加 `--no-plugins`，包照常安装，只是配置需要按下面各框架的说明手动复制一份。
+
+**不用 Composer 也能装**：把 `src/`、`config/` 与 `prepend.php` 拷进项目，`require` 一个文件即可，见「原生 PHP」。
 
 ---
 
@@ -140,6 +144,28 @@ security_guard();
 - `cookies` / `user_agent` / `authorization`·`x-token`·`x-auth-token` 一并送入身份维度检测，因此**无框架项目同样覆盖会话劫持与 Token 登录**，无需额外配置。`Authorization` 在 Apache+CGI 下不出现在 `$_SERVER`，已回退到 `getallheaders()` 读取。
 
 `security_guard()` 只跑自动部分；`recordLogin()` / `recordFailedLogin()` / `isLockedOut()` 仍需应用在自己的登录分支里调用（做法与框架相同，见「身份维度检测」）。
+
+### 原生 PHP（无 Composer）
+
+不装 Composer 也能用：把 `src/`、`config/`、`prepend.php` 拷进项目，然后二选一。
+
+```php
+// 一、入口文件里手动接入 —— 与框架中间件同一条链路
+require '/path/to/security-php/src/helpers.php'; // 无 Composer 时它自带 PSR-4 自动加载
+security_guard();
+```
+
+```ini
+; 二、交给 PHP 自动前置，应用代码一行都不用改
+; php.ini / php-fpm pool
+auto_prepend_file = /path/to/security-php/prepend.php
+; .htaccess
+; php_value auto_prepend_file "/path/to/security-php/prepend.php"
+; nginx + php-fpm
+; fastcgi_param PHP_VALUE "auto_prepend_file=/path/to/security-php/prepend.php"
+```
+
+`prepend.php` 默认读包内的 `config/security.php`；要改配置就把默认配置复制一份出去，用环境变量 `SECURITY_CONFIG` 指过去 —— 升级包时你的设置不会被覆盖。CLI（cron、队列 worker、命令行脚本）会直接跳过：那里没有 HTTP 请求可扫。
 
 ### Laravel
 
@@ -344,11 +370,11 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
     'enabled'   => true,
     'urldecode' => true, // 值含 % 时解码（含双重编码）
     'fullwidth' => true, // 全角 ASCII 转半角
-    'entities'  => true, // 值含 &# 或 &amp; 时解 HTML 实体
+    'entities'  => true, // 值含 & 时解 HTML 实体（含 &lt; 这类具名实体）
 ],
 ```
 
-正则检测器只看原始值，攻击者把载荷编码一次（`%3Cscript%3E`）、双重编码（`%2527`），或换个形态（全角 `Ｓｅｌｅｃｔ`、HTML 实体 `&#60;script&#62;`）就能绕过。开启后，携带编码信号的值会额外解码一次，**解码结果与原值都参与扫描**，命中时日志 `detail` 标注 `[decoded:xxx]`。
+正则检测器只看原始值，攻击者把载荷编码一次（`%3Cscript%3E`）、双重编码（`%2527`），或换个形态（全角 `Ｓｅｌｅｃｔ`、HTML 实体 `&#60;script&#62;` 与具名写法 `&lt;script&gt;`）就能绕过。开启后，携带编码信号的值会额外解码一次，**解码结果与原值都参与扫描**，命中时日志 `detail` 标注 `[decoded:xxx]`。
 
 每种变体都先做廉价预检（值里没有 `%` 就绝不调用 `urldecode`），所以没有编码的请求不产生额外开销。**代价**：含 `%` 的合法文本（带 URL 的表单、搜索词）解码后可能新增命中，高误报检测器建议保持 `log` 模式。
 
@@ -363,8 +389,8 @@ if (!empty($threats) && SecurityGuard::shouldBlock($threats)) {
         'cookie'  => 'laravel_session',                      // 会话 Cookie 名，留空则只用 Token
         'headers' => ['authorization', 'x-token', 'x-auth-token'], // Token 来源，按序取第一个非空
         'bind'    => ['ua', 'ip'],                           // 指纹因子，默认 UA + IP 网段
-        'ip_bits' => 24,                                     // IP 归一到的网段位数
-        'ttl'     => 7200,                                   // 空闲多久后视为新会话、重新绑定
+        'ip_bits' => 24,                                     // IP 归一到的网段位数（::ffff:1.2.3.4 这类映射地址按 IPv4 处理）
+        'ttl'     => 7200,                                   // 空闲多久后视为新会话、重新绑定（记录每 ttl/2 才刷新一次，实际窗口至多 1.5×ttl）
     ],
     'login' => [
         'ttl'        => 86400, // 登录地记忆时长
@@ -430,6 +456,8 @@ if ($threat !== null) { /* 本次尝试已触发锁定，账号将被拒绝 */ }
 
 当同一 IP 在 `window_seconds` 秒内触发 `max_attempts` 次任意攻击检测后，该 IP 被封禁 `ban_duration_seconds` 秒。封禁期间所有请求直接返回 403。
 
+计数窗口过期且未达到阈值的记录会被清掉，存储不会按攻击过的 IP 数量无限增长；已经生效的封禁不受后续窗口重置影响 —— 封禁期内再次触发计数，剩余封禁时长照旧。存储里的非数组脏数据按「没有记录」处理，不会拿它判定封禁。
+
 ### 存储配置
 
 ```php
@@ -454,7 +482,9 @@ if ($threat !== null) { /* 本次尝试已触发锁定，账号将被拒绝 */ }
 ],
 ```
 
-`file` 模式将数据存储在单个 JSON 文件中（flock 原子写入）。`redis` 使用外部传入的 Redis 实例实现分布式共享存储。`cache` 将每个 key 存为独立文件，避免单文件写入竞争。
+`file` 模式将数据存储在单个 JSON 文件中：写入加排他锁并原地截断，读取加共享锁 —— 无锁读取可能正好读到截断后的空文件，被当成「还没有状态」（新会话基线、清零的失败计数、不存在的封禁）。`redis` 使用外部传入的 Redis 实例实现分布式共享存储，批量读取走一次 MGET，不是每 key 一次往返。`cache` 将每个 key 存为独立文件，避免单文件写入竞争。
+
+落盘失败（目录不可写、磁盘满、JSON 编码失败）会以 `error_log` 报一次，每个路径在每个进程里只报一次 —— 静默失败等于封禁、锁定与会话绑定全部失效却查不到原因。
 
 ---
 
@@ -487,7 +517,7 @@ security-php/
 │   │   └── IpPrefix.php                  #   IP 网段归一化（IPv4 / IPv6）
 │   └── Storage/                          # 可插拔持久化抽象
 │       ├── StorageInterface.php          #   共用契约，IdentityGuard 与 IpBlacklist 共享同一实例
-│       ├── FileStorage.php               #   单 JSON 文件 + flock 原子写入
+│       ├── FileStorage.php               #   单 JSON 文件：写加排他锁、读加共享锁，写失败 error_log 一次
 │       ├── RedisStorage.php              #   外部注入 \Redis 实例
 │       └── CacheStorage.php              #   每 key 独立文件
 ├── middleware/                           # 框架适配层：提取请求 → 调 SecurityGuard → 注入响应头
@@ -496,8 +526,9 @@ security-php/
 │   ├── Thinkphp/SecurityMiddleware.php
 │   └── Hyperf/SecurityMiddleware.php
 ├── config/security.php                   # 默认配置（每项均有注释说明）
-├── tests/                                # 437 个测试、29542 条断言
-│   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 拦截页 / 特性
+├── prepend.php                           # auto_prepend_file 入口：每请求先扫一遍，应用代码零改动
+├── tests/                                # 451 个测试、31603 条断言
+│   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 拦截页 / 原生安装 / 特性
 │   ├── Detector/                         #   全检测器回归 + 边界用例
 │   └── Middleware/                       #   四个框架适配器端到端
 ├── docs/
@@ -505,7 +536,9 @@ security-php/
 │   ├── svg/                              # 架构 / 功能 / 生命周期 三张设计图
 │   ├── code-review-report-*.md           # 代码评审报告
 │   └── test-report-*.md                  # 测试报告
-├── scripts/release.sh                    # 发版脚本
+├── scripts/
+│   ├── release.sh                        # 发版脚本
+│   └── benchmark.php                     # 扫描开销基准（按请求形态）
 ├── phpunit.xml
 └── composer.json
 ```
@@ -571,6 +604,28 @@ HTTP Request
 
 三个短路点值得记住：**IP 白名单**命中直接放行、**IP 封禁期**内直接 403，两者都不再进入检测链 —— 所以白名单里的机器零开销，被封禁的机器也零开销。检测到威胁后先写日志、再决定放行还是拦截：`log` 模式的威胁不会计入 IP 升级黑名单，只有 `block` 模式的才计数。
 
+### 性能
+
+扫描发生在每个请求上，所以它得便宜。`php scripts/benchmark.php` 按请求形态给出开销，下面是同一台机器上交替测得的优化前后对比（PHP 8.3，每档 300 次取最优；绝对值随机器与负载浮动，看比例即可）：
+
+| 请求形态 | 优化前 | 优化后 |
+|---|---|---|
+| 3 个小字段 | 8.9 ms | 2.5 ms |
+| 典型表单 · 10 字段（含中文长文本） | 21.7 ms | 6.0 ms |
+| 含 128 KB 大字段 | 16.4 ms | 12.4 ms |
+
+三条措施：
+
+**1. 正则预筛（prefilter）。** 25 个正则检测器共 250 条 pattern，逐个跑意味着每个字段上千次 `preg_match`。现在把每个检测器的 pattern 按 flag 分组，每组拼成一条 `(?:p1)|(?:p2)|…` 的备用表达式：先用它对值跑一次，返回 `0`（确定不匹配）就整组跳过，命中才逐条跑。
+
+预筛只做减法 —— 严重级别、detail、payload 仍由原 pattern 决定。只有确定的"不匹配"才会跳过，`false`（回溯超限、编译失败）一律回退逐条跑，所以结果与逐个匹配完全一致。`tests/Detector/PrefilterTest.php` 拿全量语料（测试里出现过的每个字符串字面量、每条 pattern 自身、边界样本）逐条比对「预筛结果 == 逐个结果」，两万多条断言守着这个不变量。
+
+**2. 大字段绕过预筛。** 组合表达式要在每个位置尝试所有分支，而单条 pattern 能靠字面量前缀跳过大段文本 —— 从十几 KB 起后者更快，因此超过 8 KB 的值（`GATE_MAX_LENGTH`）直接跑单条 pattern。
+
+**3. 空值不进扫描循环。** 请求元数据每次都会带上几个空字段（GET 请求没有 Content-Length 等），空串对所有 pattern 都是死路。没有任何 pattern 能匹配空串 —— 这条同样由 `PrefilterTest` 断言守住。
+
+另外顺手修掉两处白干的写入：会话指纹命中基线时不再每次重写整条记录（文件存储、5000 会话时每次约 15 ms），Redis 的 `all()` 从「每个 key 一次 GET」改成一次 `MGET`。
+
 ### 关键设计决策
 
 **1. 抽象检测器基类**
@@ -614,12 +669,18 @@ class XssDetector extends AbstractRegexDetector
 | 正则错误检测 | AbstractRegexDetector | `preg_match === false` 时触发 `error_log` |
 | 日志注入防护 | Logger::sanitize() | `\r\n` → `\\r\\n`，`|` → 空格 |
 | 原子日志写入 | Logger::log() | fopen+flock+fwrite，避免竞态 |
+| 日志轮转防覆盖 | Logger::log() | 轮转文件名为秒级时间戳，同秒内二次轮转会撞名 —— 撞上就追加随机后缀，早先那份不会被改名覆盖 |
+| 存储读加共享锁 | FileStorage::read() | 写入是原地截断，读取走 LOCK_SH：无锁读者可能正好读到空文件，被当成「还没有状态」 |
+| 存储写失败告警 | FileStorage | 落盘失败（不可写 / 编码失败）每个路径每进程 `error_log` 一次；静默失败等于封禁、锁定与会话绑定全部失效却查不到原因 |
 | 敏感数据掩码 | DataLeakDetector | AWS Key 等敏感信息在日志中显示为 `AKIAIOS***XAMPLE` |
 | IP 白名单 CIDR | SecurityGuard | 支持 IPv4 ip2long + 位掩码、IPv6 inet_pton + 二进制匹配 |
-| IP 攻击升级黑名单 | IpBlacklist | 窗口内攻击计数、自动封禁，可插拔存储后端（File/Redis/Cache），flock 原子写入（File 模式） |
+| IP 攻击升级黑名单 | IpBlacklist | 窗口内攻击计数、自动封禁，可插拔存储后端（File/Redis/Cache），flock 原子写入（File 模式）；窗口过期且未达阈值的条目即删，生效中的封禁不被新窗口重置 |
 | 凭据脱敏 | IdentityGuard | 会话 ID / token 只以 `sha256` 哈希落盘，日志里只出现 `#` + 哈希前 8 位，明文永不写存储与日志 |
 | 签名密钥不落库 | config | `signing_key` 取自 `getenv('SECURITY_SIGNING_KEY')`，密钥不进版本库；未配置时篡改检测静默禁用 |
-| 编码归一化扫描 | NormalizationScanner | URL / 双重编码、全角、HTML 实体各解一次后重扫，命中标注 `[decoded:xxx]`；廉价预检确保无编码请求零开销 |
+| 编码归一化扫描 | NormalizationScanner | URL / 双重编码、全角、HTML 实体（含 `&lt;` 具名形式）各解一次后重扫，命中标注 `[decoded:xxx]`；廉价预检（看 `%` / 看 `&`）确保无编码请求零开销 |
+| 状态读取加锁 | FileStorage | 写持排他锁、读持共享锁：写方会截断文件，无锁读能读到「空状态」，而所有调用方都把它当成"还没绑定过" —— 那正是会话劫持漏报的成因 |
+| IPv4-mapped IPv6 | IpPrefix | `::ffff:203.0.113.5` 按 IPv4 掩码，否则双栈/Swoole 下所有客户端都会被归一成同一个 `::/64`，会话指纹里的 IP 因子形同失效 |
+| 黑名单条目回收 | IpBlacklist | 窗口过期且未达阈值的计数条目即时删除（否则攻击者轮换 IP 即可无限撑大存储）；仍在生效的封禁不会被窗口滚动清掉；存储里读到非数组一律按「无记录」处理，不当作封禁 |
 | 账号哈希落盘 | LoginLockout | 锁定记录的 key 与威胁 payload 都只含 `sha256(user_id)`，明文账号不写存储与日志 |
 | 安全响应头 | SecurityGuard::securityHeaders() | 正常响应与拦截响应都注入 nosniff / X-Frame-Options 等头，值为空字符串的头自动跳过 |
 | 拦截页转义 | BlockPage | 拦截页里的消息与检测器名一律 `htmlspecialchars`，只展示检测器名，载荷与正则细节只进日志；页面带 `noindex` |
@@ -705,8 +766,10 @@ class MyCustomDetector implements DetectorInterface
 
 ### 依赖
 
-- PHP >= 8.0
-- 零外部依赖
+- PHP >= 8.0，8.0 / 8.1 / 8.2 / 8.3 / 8.4 均已验证（全库 lint、全检测器运行、完整测试套件在 8.3 与 8.4 上全绿）
+- 零外部依赖，**不需要任何 PHP 扩展**：不依赖 mbstring，只用 PCRE / json / SPL（选 Redis 存储时才需要 `redis` 扩展）
+- **不需要 Composer**：见「原生 PHP」
+- 测试套件本身要用 PHPUnit 12，所以跑测试需要 PHP >= 8.3；这只影响开发，与运行时无关
 
 ---
 
@@ -718,7 +781,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (437 tests, 29542 assertions)
+OK (451 tests, 31603 assertions)
 ```
 
 ## License

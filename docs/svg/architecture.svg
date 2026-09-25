@@ -16,15 +16,15 @@
   <text x="40" y="72" font-size="13" fill="#64748B">31 个无状态检测器 + 4 项跨请求身份校验；框架适配层与核心零耦合，全部经 SecurityGuard 门面同一条链路</text>
 
   <!-- ══════════ ① 入口层 ══════════ -->
-  <text x="40" y="110" font-size="12" font-weight="600" fill="#64748B">① 入口层 —— 提取 GET / POST / COOKIE / FILES</text>
+  <text x="40" y="110" font-size="12" font-weight="600" fill="#64748B">① 入口层 —— 提取 GET / POST / COOKIE / FILES（中间件 / 全局函数 / auto_prepend_file）</text>
 
   <rect x="40" y="122" width="290" height="58" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
   <text x="185" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">框架中间件 × 4</text>
   <text x="185" y="167" font-size="12" fill="#64748B" text-anchor="middle">Laravel · Webman · ThinkPHP · Hyperf</text>
 
   <rect x="355" y="122" width="290" height="58" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
-  <text x="500" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">全局函数（无框架）</text>
-  <text x="500" y="167" font-size="12" fill="#64748B" text-anchor="middle">security_guard() · security_scan_current_request()</text>
+  <text x="500" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">全局函数 · 原生 PHP</text>
+  <text x="500" y="167" font-size="12" fill="#64748B" text-anchor="middle">security_guard() · prepend.php</text>
 
   <rect x="670" y="122" width="290" height="58" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
   <text x="815" y="147" font-size="14.5" font-weight="600" fill="#1E293B" text-anchor="middle">手动调用</text>
