@@ -125,6 +125,31 @@ class LoggerTest extends TestCase
         $this->assertNotEmpty($rotated, 'Log rotation should create rotated files');
     }
 
+    /**
+     * Rotated names are second-resolution: two rotations inside one second
+     * used to rename onto the same target and drop the earlier file.
+     */
+    public function testRotationsWithinTheSameSecondDoNotOverwriteEachOther(): void
+    {
+        $logger = new Logger([
+            'enabled' => true,
+            'path' => $this->logPath,
+            'max_size' => 0.00001, // ~10 bytes: every line rotates
+            'dedup_seconds' => 0,
+        ]);
+
+        $threat = new ThreatResult('test', 'low', 'f', 'payload', 'detail');
+        for ($i = 0; $i < 3; $i++) {
+            $logger->log($threat, ['ip' => '1.2.3.4', 'method' => 'POST', 'uri' => '/test']);
+        }
+
+        // 3 writes → 2 rotations (the first write finds an empty file, below
+        // the size limit). Before the fix the second rename hit the same
+        // second-resolution name and only 1 rotated file survived.
+        $rotated = glob($this->logPath . '.*') ?: [];
+        $this->assertCount(2, $rotated, '同一秒内的两次轮转不能互相覆盖：' . implode(', ', $rotated));
+    }
+
     public function testLogWithMissingMetaFields(): void
     {
         $logger = new Logger([

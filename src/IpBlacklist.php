@@ -37,17 +37,23 @@ class IpBlacklist
     public function check(string $ip): ?array
     {
         $entry = $this->storage->get($ip);
-        if ($entry === null) {
+        // Anything but an array is foreign data: fail closed on the counter,
+        // never report a ban from it
+        if (!is_array($entry)) {
             return null;
         }
 
         $now = time();
-        if (($entry['banned_until'] ?? 0) > $now) {
+        $bannedUntil = (int) ($entry['banned_until'] ?? 0);
+
+        if ($bannedUntil > $now) {
             return $entry;
         }
 
-        // Ban expired, clean up
-        if (($entry['banned_until'] ?? 0) > 0) {
+        // Nothing worth keeping: the ban expired, or the counting window ran
+        // out below the threshold. Without this the store grows by one key per
+        // attacking IP forever.
+        if ($bannedUntil > 0 || ($entry['last_seen'] ?? 0) < $now - $this->windowSeconds) {
             $this->storage->delete($ip);
         }
 
@@ -58,18 +64,21 @@ class IpBlacklist
     {
         $now = time();
         $entry = $this->storage->get($ip);
-
-        // Reset if window expired
-        if ($entry !== null && ($entry['last_seen'] ?? 0) < $now - $this->windowSeconds) {
+        if (!is_array($entry)) {
             $entry = null;
         }
 
-        if ($entry === null) {
+        $bannedUntil = (int) ($entry['banned_until'] ?? 0);
+        $windowGone = $entry !== null && ($entry['last_seen'] ?? 0) < $now - $this->windowSeconds;
+
+        if ($entry === null || $windowGone) {
+            // New counting window. A ban that is still active outlives it —
+            // resetting it to 0 here would lift the ban early.
             $entry = [
                 'count' => 1,
                 'first_seen' => $now,
                 'last_seen' => $now,
-                'banned_until' => 0,
+                'banned_until' => max($bannedUntil, 0),
             ];
         } else {
             $entry['count']++;

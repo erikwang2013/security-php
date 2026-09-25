@@ -21,11 +21,15 @@ class RedisStorage implements StorageInterface
 
     public function get(string $key): mixed
     {
-        $value = $this->redis->get($this->prefix . $key);
-        if ($value === false) {
+        return self::decode($this->redis->get($this->prefix . $key));
+    }
+
+    private static function decode(mixed $value): mixed
+    {
+        if ($value === false || $value === null) {
             return null;
         }
-        $decoded = json_decode($value, true);
+        $decoded = json_decode((string) $value, true);
         // 'null' is a valid stored JSON value; only fall back to raw when it isn't
         return $decoded !== null || $value === 'null' ? $decoded : $value;
     }
@@ -51,9 +55,14 @@ class RedisStorage implements StorageInterface
         $result = [];
         $prefixLen = strlen($this->prefix);
         $this->eachKey(function ($keys) use (&$result, $prefixLen) {
-            foreach ($keys as $fullKey) {
-                $shortKey = substr($fullKey, $prefixLen);
-                $result[$shortKey] = $this->get($shortKey);
+            if (empty($keys)) {
+                return;
+            }
+            // One MGET per SCAN batch instead of a GET per key: at 5000 keys
+            // that is a single round trip instead of 5000.
+            $values = $this->redis->mGet($keys);
+            foreach (array_values($keys) as $i => $fullKey) {
+                $result[substr((string) $fullKey, $prefixLen)] = self::decode($values[$i] ?? null);
             }
         });
         return $result;

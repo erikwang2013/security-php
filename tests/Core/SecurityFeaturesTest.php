@@ -219,6 +219,24 @@ class SecurityFeaturesTest extends TestCase
         $this->assertStringContainsString('[decoded:entities]', $threats[0]->detail);
     }
 
+    /**
+     * The named forms used to slip through: the prefilter only looked for
+     * '&#' and '&amp;', so &lt;script&gt; never reached a detector while
+     * &#60;script&#62; did.
+     */
+    public function testNormalizationCatchesNamedHtmlEntityBypass(): void
+    {
+        $this->boot();
+
+        $threats = $this->typeThreats(
+            SecurityGuard::guard(['comment' => '&lt;script&gt;alert(1)&lt;/script&gt;'], $this->meta()),
+            'xss',
+        );
+
+        $this->assertNotEmpty($threats);
+        $this->assertStringContainsString('[decoded:entities]', $threats[0]->detail);
+    }
+
     public function testNormalizationDoesNotFalsePositiveOnLegitPercentText(): void
     {
         $this->boot();

@@ -59,7 +59,13 @@ final class SessionFingerprint
         }
 
         if (hash_equals((string) ($entry['fp'] ?? ''), $current['fp'])) {
-            $this->storage->set($key, $current + ['seen' => $now]);
+            // Refresh the idle timer at most once per half-TTL. Rewriting the
+            // record on every request costs a whole-store rewrite on the file
+            // backend (~15ms at 5000 sessions) for no change but the clock.
+            // Cost: the idle window can run ttl + ttl/2 instead of ttl.
+            if ((int) ($entry['seen'] ?? 0) + intdiv($ttl, 2) < $now) {
+                $this->storage->set($key, $current + ['seen' => $now]);
+            }
 
             return null;
         }

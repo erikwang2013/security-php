@@ -184,6 +184,47 @@ class StorageTest extends TestCase
         }
     }
 
+    /**
+     * mutate() truncates the file in place, so a reader without a lock can
+     * catch it mid-write and see an empty store. Every consumer reads that as
+     * "no state yet": a fresh session baseline, a reset failure counter, a
+     * missing ban.
+     */
+    public function testReadWaitsForAWriterInsteadOfSeeingAnEmptyStore(): void
+    {
+        $path = $this->tmpDir . '/lock.json';
+        $storage = new FileStorage(['path' => $path]);
+        $storage->set('key', ['fp' => 'baseline']);
+
+        // A separate process holds the write lock with the file truncated, the
+        // exact state a mid-write reader used to observe.
+        $writer = sys_get_temp_dir() . '/sec_lock_writer_' . uniqid() . '.php';
+        file_put_contents($writer, '<?php
+            $fp = fopen($argv[1], "c+");
+            flock($fp, LOCK_EX);
+            ftruncate($fp, 0);
+            usleep(300000);
+            fwrite($fp, json_encode(["key" => ["fp" => "written"]]));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        ');
+
+        $proc = proc_open([PHP_BINARY, '-n', $writer, $path], [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
+        try {
+            usleep(100000); // let the writer take the lock and truncate
+            $read = $storage->get('key');
+
+            $this->assertNotNull($read, '读到期中状态会被当成“没有数据”，这正是会话劫持漏报的成因');
+            $this->assertSame(['fp' => 'written'], $read);
+        } finally {
+            if (is_resource($proc)) {
+                proc_close($proc);
+            }
+            @unlink($writer);
+        }
+    }
+
     private function redis(): ?\Redis
     {
         if (!class_exists('Redis')) {

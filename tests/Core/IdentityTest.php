@@ -9,8 +9,12 @@ declare(strict_types=1);
 namespace Erikwang2013\Security\Tests\Core;
 
 use Erikwang2013\Security\Identity\FieldSigner;
+use Erikwang2013\Security\Identity\IpPrefix;
+use Erikwang2013\Security\Identity\LoginLockout;
+use Erikwang2013\Security\Identity\SessionFingerprint;
 use Erikwang2013\Security\SecurityGuard;
 use Erikwang2013\Security\Storage\FileStorage;
+use Erikwang2013\Security\Storage\StorageInterface;
 use Erikwang2013\Security\ThreatResult;
 use PHPUnit\Framework\TestCase;
 
@@ -606,5 +610,124 @@ class IdentityTest extends TestCase
             SecurityGuard::guard([], $this->meta(['cookies' => $cookies, 'user_agent' => 'curl/8']))
         ));
         $this->assertSame('', SecurityGuard::signFields(['a' => 1]));
+    }
+
+    /**
+     * Dual-stack sockets and Swoole report IPv4 clients as ::ffff:a.b.c.d.
+     * Masked as IPv6 that is ::/64 for every client, so the IP half of the
+     * session fingerprint stopped discriminating at all.
+     */
+    public function testIpv4MappedIpv6IsMaskedAsIpv4(): void
+    {
+        $this->assertSame('203.0.113.0', IpPrefix::of('::ffff:203.0.113.5'));
+        $this->assertSame(IpPrefix::of('203.0.113.5'), IpPrefix::of('::ffff:203.0.113.5'));
+        $this->assertNotSame(IpPrefix::of('198.51.100.5'), IpPrefix::of('::ffff:203.0.113.5'));
+
+        // Real IPv6 is untouched
+        $this->assertSame('2001:db8::', IpPrefix::of('2001:db8::1'));
+    }
+
+    /**
+     * A record written before locked_until existed raised "Undefined array
+     * key", which Laravel turns into a 500 on the login path.
+     */
+    public function testLockoutToleratesARecordWithoutLockedUntil(): void
+    {
+        $storage = new FileStorage(['path' => $this->storagePath]);
+        $storage->set('lock:u-legacy', ['failures' => []]);
+        $lockout = new LoginLockout($storage, ['max_failures' => 5, 'window_seconds' => 900]);
+
+        $warnings = [];
+        set_error_handler(static function (int $no, string $msg) use (&$warnings): bool {
+            $warnings[] = $msg;
+            return true;
+        });
+        try {
+            $this->assertFalse($lockout->isLocked('u-legacy'));
+            $this->assertNull($lockout->recordFailed('u-legacy'));
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $warnings, '旧格式记录不应产生 PHP 警告');
+    }
+
+    /**
+     * The matching path used to rewrite the session record on every request —
+     * a whole-store rewrite on the file backend for a timestamp nobody reads
+     * until the TTL is close.
+     */
+    public function testSessionFingerprintDoesNotRewriteOnEveryRequest(): void
+    {
+        $storage = new class implements StorageInterface {
+            public int $writes = 0;
+            private array $data = [];
+
+            public function get(string $key): mixed
+            {
+                return $this->data[$key] ?? null;
+            }
+
+            public function set(string $key, mixed $value): void
+            {
+                $this->writes++;
+                $this->data[$key] = $value;
+            }
+
+            public function delete(string $key): void
+            {
+                unset($this->data[$key]);
+            }
+
+            public function has(string $key): bool
+            {
+                return isset($this->data[$key]);
+            }
+
+            public function all(): array
+            {
+                return $this->data;
+            }
+
+            public function clear(): void
+            {
+                $this->data = [];
+            }
+        };
+
+        $fingerprint = new SessionFingerprint($storage, ['cookie' => 'sess', 'ttl' => 7200]);
+        $meta = [
+            'cookies' => ['sess' => 'sess-abc'],
+            'user_agent' => 'Mozilla/5.0',
+            'ip' => '203.0.113.9',
+        ];
+
+        $this->assertNull($fingerprint->check($meta));
+        $this->assertSame(1, $storage->writes, '首次请求建立基线');
+
+        // Same session, same fingerprint: nothing changes but the clock
+        $this->assertNull($fingerprint->check($meta));
+        $this->assertNull($fingerprint->check($meta));
+        $this->assertSame(1, $storage->writes, '命中基线不应重复写存储');
+    }
+
+    /**
+     * A different fingerprint must still alert, throttled writes or not.
+     */
+    public function testSessionFingerprintStillAlertsAfterTheWriteThrottle(): void
+    {
+        $this->boot();
+
+        $cookies = [$this->config['identity']['session']['cookie'] => 'sess-abc'];
+        SecurityGuard::guard([], $this->meta(['cookies' => $cookies]));
+        SecurityGuard::guard([], $this->meta(['cookies' => $cookies]));
+
+        $threats = $this->identityThreat(SecurityGuard::guard([], $this->meta([
+            'cookies' => $cookies,
+            'user_agent' => 'curl/8',
+        ])));
+
+        $this->assertNotNull($threats);
+        $this->assertSame('session_hijack', $threats->type);
     }
 }

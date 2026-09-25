@@ -78,6 +78,11 @@ class UploadDetector implements DetectorInterface
     {
         $flat = [];
         foreach ($data as $key => $value) {
+            // Anything can reach guard(): a JSON body decoded into stdClass, a
+            // scalar, a string. Indexing a non-array here was a fatal Error.
+            if (!is_array($value)) {
+                continue;
+            }
             if (is_array($value['name'] ?? null) || is_array($value['tmp_name'] ?? null)) {
                 $names = (array) ($value['name'] ?? []);
                 foreach ($names as $i => $name) {

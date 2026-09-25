@@ -65,7 +65,13 @@ class Logger
         if ($shouldRotate) {
             // Rename without holding the lock; a concurrent writer may reopen the old file
             // briefly, but no data is lost — it is just written to the rotated file.
-            @rename($this->path, $this->path . '.' . date('YmdHis'));
+            $rotated = $this->path . '.' . date('YmdHis');
+            // Second-boundary names collide: two rotations in the same second
+            // would rename over each other and drop the earlier file.
+            if (file_exists($rotated)) {
+                $rotated .= '-' . bin2hex(random_bytes(3));
+            }
+            @rename($this->path, $rotated);
         }
 
         // Atomic single-write append (O_APPEND), safe against concurrent loggers

@@ -194,6 +194,13 @@ abstract class AbstractRegexDetector implements DetectorInterface
             return null;
         }
 
+        // \1..\9 and \g{n} count capturing groups across the whole expression:
+        // another branch of the alternation could claim the number. No pattern
+        // does this today; ones that would are simply never combined.
+        if (preg_match('/\\\\[1-9]|\\\\g\{|\\\\g[0-9]/', $body) === 1) {
+            return null;
+        }
+
         return ['body' => $body, 'flags' => substr($pattern, $end + 1)];
     }
 

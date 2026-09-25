@@ -114,10 +114,13 @@ final class NormalizationScanner
             }
         }
 
-        if (!empty($config['entities']) && (str_contains($value, '&#') || str_contains($value, '&amp;'))) {
+        // Any '&' may start an entity: gating on '&#'/'&amp;' alone let the
+        // named forms through untouched — `&lt;script&gt;` reached no detector
+        // at all, while its numeric twin `&#60;script&#62;` was caught.
+        if (!empty($config['entities']) && str_contains($value, '&')) {
             $decoded = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $variant = 'entities';
-            if ($decoded !== $value && (str_contains($decoded, '&#') || str_contains($decoded, '&amp;'))) {
+            if ($decoded !== $value && str_contains($decoded, '&')) {
                 $decoded = html_entity_decode($decoded, ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 $variant = 'entities2';
             }

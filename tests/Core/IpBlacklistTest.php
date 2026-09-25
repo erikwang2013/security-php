@@ -199,4 +199,46 @@ class IpBlacklistTest extends TestCase
 
         $bl->reset();
     }
+
+    /**
+     * Sub-threshold counters used to live forever: an attacker rotating IPs
+     * grew the store by one key per address, without ever being banned.
+     */
+    public function testBelowThresholdEntryIsDroppedOnceItsWindowIsGone(): void
+    {
+        $stale = time() - 3600;
+        $this->storage->set('198.51.100.7', [
+            'count' => 2, 'first_seen' => $stale, 'last_seen' => $stale, 'banned_until' => 0,
+        ]);
+
+        $this->assertNull($this->blacklist->check('198.51.100.7'));
+        $this->assertNull($this->storage->get('198.51.100.7'), '窗口过期的计数条目应被删除');
+    }
+
+    /**
+     * record() used to null the entry when the window elapsed, wiping an
+     * active ban along with the counter.
+     */
+    public function testActiveBanSurvivesTheWindowRollingOver(): void
+    {
+        $bannedUntil = time() + 600;
+        $stale = time() - 3600;
+        $this->storage->set('198.51.100.8', [
+            'count' => 5, 'first_seen' => $stale, 'last_seen' => $stale, 'banned_until' => $bannedUntil,
+        ]);
+
+        $this->blacklist->record('198.51.100.8');
+
+        $entry = $this->storage->get('198.51.100.8');
+        $this->assertSame($bannedUntil, $entry['banned_until'], '窗口过期不能提前解除封禁');
+    }
+
+    public function testForeignStoredValueIsNotReadAsABan(): void
+    {
+        $this->storage->set('198.51.100.9', 'not-an-array');
+
+        $this->assertNull($this->blacklist->check('198.51.100.9'));
+        $this->assertFalse($this->blacklist->isBanned('198.51.100.9'));
+        $this->assertNull($this->blacklist->record('198.51.100.9'), '外来数据不应算作已封禁');
+    }
 }

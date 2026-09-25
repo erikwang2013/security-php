@@ -53,7 +53,9 @@ final class LoginLockout
         $record = $this->storage->get($key);
         $record = is_array($record) ? $record : ['failures' => [], 'locked_until' => 0];
 
-        if ((int) $record['locked_until'] > $now) {
+        // ?? 0: a record written by an older version can lack the key, and a
+        // warning here becomes a 500 under Laravel's error handler
+        if ((int) ($record['locked_until'] ?? 0) > $now) {
             return $this->locked($userId);
         }
 

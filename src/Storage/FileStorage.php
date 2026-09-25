@@ -37,6 +37,26 @@ class FileStorage implements StorageInterface
     }
 
     /**
+     * Paths whose write failure has already been reported in this process.
+     *
+     * @var array<string, true>
+     */
+    private static array $reported = [];
+
+    /**
+     * A write that fails silently disables banning, lockout and session
+     * binding without a trace, so say it once per path per process.
+     */
+    private static function reportFailure(string $path, string $reason): void
+    {
+        if (isset(self::$reported[$path])) {
+            return;
+        }
+        self::$reported[$path] = true;
+        error_log("Security: cannot persist state to {$path} ({$reason}); IP bans and identity checks are not being recorded");
+    }
+
+    /**
      * Atomic read-modify-write under an exclusive lock.
      */
     private function mutate(callable $fn): void
@@ -48,6 +68,7 @@ class FileStorage implements StorageInterface
 
         $fp = @fopen($this->path, 'c+');
         if ($fp === false) {
+            self::reportFailure($this->path, 'open failed');
             return;
         }
 
@@ -60,7 +81,9 @@ class FileStorage implements StorageInterface
             $data = $fn($data);
 
             $json = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if ($json !== false) {
+            if ($json === false) {
+                self::reportFailure($this->path, 'encode failed');
+            } else {
                 ftruncate($fp, 0);
                 rewind($fp);
                 fwrite($fp, $json);
@@ -89,13 +112,29 @@ class FileStorage implements StorageInterface
         }
     }
 
+    /**
+     * Read under a shared lock: mutate() truncates the file in place, so an
+     * unlocked reader can catch it mid-write and see an empty store — which
+     * every caller reads as "no state yet" (a fresh session baseline, a reset
+     * failure counter, a missing ban).
+     */
     private function read(): array
     {
-        if (!file_exists($this->path)) {
+        $fp = @fopen($this->path, 'r');
+        if ($fp === false) {
             return [];
         }
 
-        $contents = @file_get_contents($this->path);
+        try {
+            if (!flock($fp, LOCK_SH)) {
+                return [];
+            }
+            $contents = stream_get_contents($fp);
+            flock($fp, LOCK_UN);
+        } finally {
+            fclose($fp);
+        }
+
         if ($contents === false || $contents === '') {
             return [];
         }
