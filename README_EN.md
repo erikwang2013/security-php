@@ -166,6 +166,14 @@ auto_prepend_file = /path/to/security-php/prepend.php
 
 `prepend.php` reads the packaged `config/security.php` by default; to use your own copy, point the `SECURITY_CONFIG` environment variable at it so a package upgrade cannot overwrite your settings. CLI (cron, queue workers, scripts) is skipped — there is no HTTP request to scan there.
 
+> **Plain PHP, one setting you must change**: `identity.session.cookie` defaults to `laravel_session`. A native PHP app names its session cookie `PHPSESSID`, and **session-hijack detection stays silently off until you change it**:
+>
+> ```php
+> 'identity' => ['session' => ['cookie' => 'PHPSESSID']],
+> ```
+>
+> If you renamed it with `session_name('XXX')`, use that name instead; token-only APIs (no cookies) can leave it empty. Behind Nginx or a CDN, configure `trusted_proxies` too — otherwise the blacklist and the unusual-login check only ever see the proxy's address.
+
 ### Laravel
 
 Auto-discovered on install. Publish config:
@@ -383,7 +391,7 @@ Session hijacking, unusual login, data tampering and login brute-force lockout s
 'identity' => [
     'enabled' => true,
     'session' => [
-        'cookie'  => 'laravel_session',                      // session cookie name; empty = token only
+        'cookie'  => 'laravel_session',                      // Laravel's name; plain PHP uses PHPSESSID
         'headers' => ['authorization', 'x-token', 'x-auth-token'], // token sources, first non-empty wins
         'bind'    => ['ua', 'ip'],                           // fingerprint factors, default UA + IP subnet
         'ip_bits' => 24,                                     // subnet size the IP is normalised to (::ffff:1.2.3.4 mapped addresses are treated as IPv4)

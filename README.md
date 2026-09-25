@@ -167,6 +167,14 @@ auto_prepend_file = /path/to/security-php/prepend.php
 
 `prepend.php` 默认读包内的 `config/security.php`；要改配置就把默认配置复制一份出去，用环境变量 `SECURITY_CONFIG` 指过去 —— 升级包时你的设置不会被覆盖。CLI（cron、队列 worker、命令行脚本）会直接跳过：那里没有 HTTP 请求可扫。
 
+> **原生 PHP 必看一项**：`identity.session.cookie` 默认是 `laravel_session`。原生 PHP 的会话名是 `PHPSESSID`，**不改这一项会话劫持检测就不会生效**（且是静默的）：
+>
+> ```php
+> 'identity' => ['session' => ['cookie' => 'PHPSESSID']],
+> ```
+>
+> 用 `session_name('XXX')` 改过名字就填自己的名字；只用 Token 登录（API / 小程序）则留空即可。走 Nginx 或 CDN 时记得配 `trusted_proxies`，否则黑名单与「异地登录」看到的都是反代的地址。
+
 ### Laravel
 
 安装后自动发现。手动发布配置：

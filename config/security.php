@@ -329,6 +329,8 @@ return [
         // 会话劫持：会话标识 -> 指纹基线
         'session' => [
             // 会话 Cookie 名。按框架实际使用的名字修改，留空则只查 token 头
+            // 会话 Cookie 名：Laravel 默认 laravel_session，原生 PHP 是 PHPSESSID
+            // （用 session_name() 改过就填那个名字）。填错检测不会报错，只是不再生效。
             'cookie' => 'laravel_session',
             // 无 Cookie 时按顺序查这些头（大小写不敏感，自动剥离 Bearer 前缀）
             'headers' => ['authorization', 'x-token', 'x-auth-token'],
