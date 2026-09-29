@@ -2,7 +2,7 @@
 
 > [English Documentation](README_EN.md)
 
-基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf 框架，也可**脱离框架**用全局函数直接接入。项目宠物是**小盾** —— 一块举着放大镜、站在门口挡攻击的蓝色盾牌。
+基于 PHP 的安全攻击检测插件，内置 31 个无状态攻击检测器与 4 项跨请求身份校验，兼容 Laravel、Webman、ThinkPHP、Hyperf、Yii2、Yii3 框架，也可**脱离框架**用全局函数直接接入。项目宠物是**小盾** —— 一块举着放大镜、站在门口挡攻击的蓝色盾牌。
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -248,6 +248,68 @@ return [
     ],
 ];
 ```
+
+### Yii2
+
+Yii2 没有中间件，适配器是一个全局 bootstrap 组件 —— 挂在应用的请求事件上，覆盖**所有**请求（不是只覆盖挂了的控制器）。手动发布配置：
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/security.php
+```
+
+按需修改 `config/security.php`，然后在 `config/web.php` 的 `bootstrap` 数组里注册：
+
+```php
+'bootstrap' => [
+    'log',
+    \Erikwang2013\Security\Middleware\Yii2\SecurityBootstrap::class,
+],
+```
+
+> 高级模板（yii2-app-advanced）的配置放 `common/config/security.php`，注册写在 `common/config/main.php`；适配器自己会先找 `@app/config/security.php`，再找 `@common/config/security.php`。
+>
+> **会话名必看**：`identity.session.cookie` 默认是 `laravel_session`，Yii2 默认会话名是 `PHPSESSID`，**不改这一项会话劫持检测就不会生效**（且是静默的）：
+>
+> ```php
+> 'identity' => ['session' => ['cookie' => 'PHPSESSID']],
+> ```
+>
+> 控制台应用（`yii` 命令）不会被挂钩，不受影响。
+
+### Yii3
+
+Yii3 全程 PSR-15 / PSR-17：中间件只要注册类名，`ResponseFactoryInterface` / `StreamFactoryInterface` 由容器注入（`config/web/di/psr17.php` 已绑定）。手动发布配置：
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/security.php
+```
+
+在 `config/web/di/application.php` 中两处改动：
+
+```php
+// 1) 加进中间件栈
+'dispatcher' => DynamicReference::to([
+    'class' => MiddlewareDispatcher::class,
+    'withMiddlewares()' => [
+        [
+            ErrorCatcher::class,
+            \Erikwang2013\Security\Middleware\Yii3\SecurityMiddleware::class,
+            Router::class,
+        ],
+    ],
+]),
+
+// 2) 同文件顶层，指向第 1 步发布出来的配置
+\Erikwang2013\Security\Middleware\Yii3\SecurityMiddleware::class => [
+    '__construct()' => ['configFile' => dirname(__DIR__, 2) . '/config/security.php'],
+],
+```
+
+不写 `configFile` 也能跑（用包内默认配置），只是之后改 `config/security.php` 不会生效。
+
+> **会话名必看**：`identity.session.cookie` 默认是 Laravel 的 `laravel_session`，Yii3 的会话 Cookie 名由你自己的 `yiisoft/session` 配置决定 —— **不改成实际名字，会话劫持检测就不会生效**（且是静默的）。
+>
+> **JSON 请求体**：`getParsedBody()` 只有在中间件栈里有 `yiisoft/request-body-parser` 时才非空 —— 否则 JSON 请求只扫 query / cookie / 文件。表单体由 PSR-7 请求工厂解析，不受影响。
 
 ### 手动调用
 
@@ -530,15 +592,17 @@ security-php/
 │       └── CacheStorage.php              #   每 key 独立文件
 ├── middleware/                           # 框架适配层：提取请求 → 调 SecurityGuard → 注入响应头
 │   ├── Laravel/                          #   SecurityMiddleware + SecurityServiceProvider（自动发现）
-│   ├── Webman/SecurityMiddleware.php     #   与下列三个适配器职责一致
+│   ├── Webman/SecurityMiddleware.php     #   与下列四个适配器职责一致
 │   ├── Thinkphp/SecurityMiddleware.php
-│   └── Hyperf/SecurityMiddleware.php
+│   ├── Hyperf/SecurityMiddleware.php
+│   ├── Yii2/SecurityBootstrap.php        #   Yii2 无中间件：挂在请求事件上的全局 bootstrap
+│   └── Yii3/SecurityMiddleware.php       #   PSR-15 / PSR-17，容器注入工厂
 ├── config/security.php                   # 默认配置（每项均有注释说明）
 ├── prepend.php                           # auto_prepend_file 入口：每请求先扫一遍，应用代码零改动
-├── tests/                                # 451 个测试、31603 条断言
+├── tests/                                # 465 个测试、32688 条断言
 │   ├── Core/                             #   门面 / 检测链 / 存储 / 日志 / 身份 / 拦截页 / 原生安装 / 特性
 │   ├── Detector/                         #   全检测器回归 + 边界用例
-│   └── Middleware/                       #   四个框架适配器端到端
+│   └── Middleware/                       #   六个框架适配器端到端
 ├── docs/
 │   ├── mascot.svg                        # 项目宠物「小盾」
 │   ├── svg/                              # 架构 / 功能 / 生命周期 三张设计图
@@ -715,10 +779,10 @@ interface StorageInterface {
 **5. 框架适配策略**
 
 - 中间件层唯一职责：从框架 Request 提取数据 → 调用 SecurityGuard
-- **同名参数跨来源不互相覆盖**：四个框架读取同名参数的优先级各不相同（Laravel 体优先于查询串、Hyperf 反之、Webman POST 优先于 GET），没有一种顺序能穷尽应用自身的读法。`SecurityGuard::mergeRequestSources()` 让最后一个来源持有裸名（与 `array_merge()` 一致，日志字段与 `whitelist_fields` 配置不受影响），被顶掉的值以 `_<来源>.<名>` 一并送检 —— 与 `_server.REMOTE_ADDR` 同一套命名，全程只增不减
+- **同名参数跨来源不互相覆盖**：各框架读取同名参数的优先级各不相同（Laravel 体优先于查询串、Hyperf 反之、Webman POST 优先于 GET），没有一种顺序能穷尽应用自身的读法。`SecurityGuard::mergeRequestSources()` 让最后一个来源持有裸名（与 `array_merge()` 一致，日志字段与 `whitelist_fields` 配置不受影响），被顶掉的值以 `_<来源>.<名>` 一并送检 —— 与 `_server.REMOTE_ADDR` 同一套命名，全程只增不减
 - 核心检测逻辑与框架零耦合，仅依赖 PHP 8.0 标准库
 - Laravel 通过 `extra.laravel.providers` 自动发现
-- Webman/ThinkPHP/Hyperf 手动在中间件配置中注册
+- Webman/ThinkPHP/Hyperf/Yii2/Yii3 手动在各自的中间件或 bootstrap 配置中注册
 - 全局函数 `security_guard()` / `security_scan_current_request()` 支持无框架项目，安全响应头与身份维度检测（会话劫持 / Token 登录）与中间件完全一致
 
 **6. 扩展新检测器**
@@ -789,7 +853,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (451 tests, 31603 assertions)
+OK (465 tests, 32688 assertions)
 ```
 
 ## License

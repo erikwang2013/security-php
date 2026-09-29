@@ -2,7 +2,7 @@
 
 > [中文文档](README.md)
 
-A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks, compatible with Laravel, Webman, ThinkPHP, and Hyperf — or usable with **no framework at all** via global functions. Its mascot is **小盾 (Shieldy)**, a blue shield holding a magnifying glass at the door.
+A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks, compatible with Laravel, Webman, ThinkPHP, Hyperf, Yii2, and Yii3 — or usable with **no framework at all** via global functions. Its mascot is **小盾 (Shieldy)**, a blue shield holding a magnifying glass at the door.
 
 Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
@@ -247,6 +247,68 @@ return [
     ],
 ];
 ```
+
+### Yii2
+
+Yii2 has no middleware, so the adapter is a global bootstrap component — it hooks the application's request events and covers **every** request, not just the controllers that opt in. Publish the config:
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/security.php
+```
+
+Edit `config/security.php` as needed, then register it in the `bootstrap` array of `config/web.php`:
+
+```php
+'bootstrap' => [
+    'log',
+    \Erikwang2013\Security\Middleware\Yii2\SecurityBootstrap::class,
+],
+```
+
+> In the advanced template (yii2-app-advanced) the config belongs in `common/config/security.php` and the registration in `common/config/main.php`; the adapter looks for `@app/config/security.php` first, then `@common/config/security.php`.
+>
+> **Session name — read this**: `identity.session.cookie` defaults to `laravel_session` while Yii2's session is `PHPSESSID`. Leave it unchanged and session-hijack detection silently never fires:
+>
+> ```php
+> 'identity' => ['session' => ['cookie' => 'PHPSESSID']],
+> ```
+>
+> Console applications (`yii` commands) are not hooked at all.
+
+### Yii3
+
+Yii3 is PSR-15 / PSR-17 throughout: registering the class name is enough, because `ResponseFactoryInterface` / `StreamFactoryInterface` are already bound in the container (`config/web/di/psr17.php`). Publish the config:
+
+```bash
+cp vendor/erikwang2013/security-php/config/security.php config/security.php
+```
+
+Two changes in `config/web/di/application.php`:
+
+```php
+// 1) Add it to the middleware stack
+'dispatcher' => DynamicReference::to([
+    'class' => MiddlewareDispatcher::class,
+    'withMiddlewares()' => [
+        [
+            ErrorCatcher::class,
+            \Erikwang2013\Security\Middleware\Yii3\SecurityMiddleware::class,
+            Router::class,
+        ],
+    ],
+]),
+
+// 2) Same file, top level: point it at the config published above
+\Erikwang2013\Security\Middleware\Yii3\SecurityMiddleware::class => [
+    '__construct()' => ['configFile' => dirname(__DIR__, 2) . '/config/security.php'],
+],
+```
+
+Omitting `configFile` still works (bundled defaults), but edits to `config/security.php` then have no effect.
+
+> **Session name — read this**: `identity.session.cookie` defaults to Laravel's `laravel_session`, while your Yii3 session cookie name comes from your own `yiisoft/session` config — **leave it unchanged and session-hijack detection silently never fires**.
+>
+> **JSON bodies**: `getParsedBody()` stays empty unless `yiisoft/request-body-parser` is in the middleware stack — without it, JSON requests are only scanned through query / cookies / files. Form bodies come from the PSR-7 request factory and are unaffected.
 
 ### Manual Usage
 
@@ -529,15 +591,17 @@ security-php/
 │       └── CacheStorage.php              #   One file per key
 ├── middleware/                           # Framework adapters: extract request → call SecurityGuard → inject headers
 │   ├── Laravel/                          #   SecurityMiddleware + SecurityServiceProvider (auto-discovery)
-│   ├── Webman/SecurityMiddleware.php     #   Same responsibility as the two below
+│   ├── Webman/SecurityMiddleware.php     #   Same responsibility as the four below
 │   ├── Thinkphp/SecurityMiddleware.php
-│   └── Hyperf/SecurityMiddleware.php
+│   ├── Hyperf/SecurityMiddleware.php
+│   ├── Yii2/SecurityBootstrap.php        #   No middleware in Yii2: global bootstrap on request events
+│   └── Yii3/SecurityMiddleware.php       #   PSR-15 / PSR-17, factories injected by the container
 ├── config/security.php                   # Default configuration (every option commented)
 ├── prepend.php                           # auto_prepend_file entry point: scans every request, app code untouched
-├── tests/                                # 451 tests, 31603 assertions
+├── tests/                                # 465 tests, 32688 assertions
 │   ├── Core/                             #   Facade / chain / storage / logger / identity / block page / native install / features
 │   ├── Detector/                         #   Full detector regression + edge cases
-│   └── Middleware/                       #   End-to-end for all four framework adapters
+│   └── Middleware/                       #   End-to-end for all six framework adapters
 ├── docs/
 │   ├── mascot.svg                        # Project mascot, 小盾 (Shieldy)
 │   ├── svg/                              # Architecture / feature / lifecycle diagrams
@@ -735,10 +799,10 @@ interface StorageInterface {
 **5. Framework Adapter Strategy**
 
 - Middleware layer has a single responsibility: extract data from framework Request → invoke SecurityGuard
-- **A name carried by two sources is never overwritten wholesale**: the four frameworks disagree on precedence (Laravel body-over-query, Hyperf query-over-body, Webman POST-over-GET) and no single order covers every way an app can read the same name. `SecurityGuard::mergeRequestSources()` lets the last source keep the bare name (matching `array_merge()`, so log fields and `whitelist_fields` config stay unchanged) while whatever it displaces is scanned under `_<source>.<name>` — the naming already used for `_server.REMOTE_ADDR`. Purely additive.
+- **A name carried by two sources is never overwritten wholesale**: the frameworks disagree on precedence (Laravel body-over-query, Hyperf query-over-body, Webman POST-over-GET) and no single order covers every way an app can read the same name. `SecurityGuard::mergeRequestSources()` lets the last source keep the bare name (matching `array_merge()`, so log fields and `whitelist_fields` config stay unchanged) while whatever it displaces is scanned under `_<source>.<name>` — the naming already used for `_server.REMOTE_ADDR`. Purely additive.
 - Core detection logic is zero-dependency, framework-agnostic, requires only PHP 8.0 standard library
 - Laravel auto-discovered via `extra.laravel.providers`
-- Webman/ThinkPHP/Hyperf registered manually in middleware config
+- Webman/ThinkPHP/Hyperf/Yii2/Yii3 registered manually in their middleware or bootstrap config
 - Global functions `security_guard()` / `security_scan_current_request()` support framework-free projects, with security headers and identity checks (session hijack / token login) identical to the middlewares
 
 **6. Adding a New Detector**
@@ -811,7 +875,7 @@ vendor/bin/phpunit
 ```
 
 ```
-OK (451 tests, 31603 assertions)
+OK (465 tests, 32688 assertions)
 ```
 
 ## License

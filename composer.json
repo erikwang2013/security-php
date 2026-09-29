@@ -1,6 +1,6 @@
 {
     "name": "erikwang2013/security-php",
-    "description": "A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks (session hijack, unusual login, data tamper, brute-force lockout). Works with Laravel, Webman, ThinkPHP, and Hyperf, or with no framework at all via global functions.",
+    "description": "A PHP security attack detection plugin with 31 stateless threat detectors and 4 cross-request identity checks (session hijack, unusual login, data tamper, brute-force lockout). Works with Laravel, Webman, ThinkPHP, Hyperf, Yii2, and Yii3, or with no framework at all via global functions.",
     "type": "composer-plugin",
     "license": "MIT",
     "keywords": ["security", "xss", "sql-injection", "waf", "attack-detection", "session-hijack", "brute-force", "identity", "framework-agnostic"],
@@ -28,7 +28,9 @@
         "laravel/framework": "Required for Laravel middleware auto-discovery",
         "webman/webman-framework": "Required for Webman middleware integration",
         "topthink/framework": "Required for ThinkPHP middleware integration",
-        "hyperf/framework": "Required for Hyperf middleware integration"
+        "hyperf/framework": "Required for Hyperf middleware integration",
+        "yiisoft/yii2": "Required for the Yii2 bootstrap integration",
+        "yiisoft/app": "Required for the Yii3 middleware integration"
     },
     "extra": {
         "class": "Erikwang2013\\Security\\Composer\\Installer",

@@ -102,6 +102,18 @@ class Installer implements PluginInterface, EventSubscriberInterface
             $targets[] = $projectRoot . '/config/autoload/security.php';
         }
 
+        if (isYii2($projectRoot)) {
+            // Advanced template keeps shared config in common/config, the
+            // basic template in config/ — matching SecurityBootstrap's lookup.
+            $targets[] = is_dir($projectRoot . '/common/config')
+                ? $projectRoot . '/common/config/security.php'
+                : $projectRoot . '/config/security.php';
+        }
+
+        if (isYii3($projectRoot)) {
+            $targets[] = $projectRoot . '/config/security.php';
+        }
+
         return $targets;
     }
 }
@@ -138,5 +150,21 @@ if (!function_exists(__NAMESPACE__ . '\\isHyperf')) {
     {
         return file_exists($root . '/bin/hyperf.php')
             && is_dir($root . '/config/autoload');
+    }
+}
+
+if (!function_exists(__NAMESPACE__ . '\\isYii2')) {
+    function isYii2(string $root): bool
+    {
+        return file_exists($root . '/yii')
+            && (file_exists($root . '/config/web.php') || is_dir($root . '/common/config'));
+    }
+}
+
+if (!function_exists(__NAMESPACE__ . '\\isYii3')) {
+    function isYii3(string $root): bool
+    {
+        return file_exists($root . '/config/common/params.php')
+            && file_exists($root . '/config/web/params.php');
     }
 }

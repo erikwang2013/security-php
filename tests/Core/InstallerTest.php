@@ -79,6 +79,42 @@ namespace Erikwang2013\Security\Tests\Core {
             $this->assertFileExists($this->root . '/config/autoload/security.php', 'Hyperf target');
         }
 
+        public function testActivatePublishesConfigForYii2BasicProject(): void
+        {
+            file_put_contents($this->root . '/yii', '<?php');
+            @mkdir($this->root . '/config', 0755, true);
+            file_put_contents($this->root . '/config/web.php', '<?php');
+
+            (new Installer())->activate(new \Composer\Composer($this->root . '/vendor'), new \Composer\IO\BufferIO());
+
+            $this->assertFileExists($this->root . '/config/security.php', 'Yii2 basic target');
+        }
+
+        public function testActivatePublishesConfigForYii2AdvancedProject(): void
+        {
+            // Advanced template: shared config lives in common/config, and the
+            // app-specific config/ of frontend/backend is not the target.
+            file_put_contents($this->root . '/yii', '<?php');
+            @mkdir($this->root . '/common/config', 0755, true);
+
+            (new Installer())->activate(new \Composer\Composer($this->root . '/vendor'), new \Composer\IO\BufferIO());
+
+            $this->assertFileExists($this->root . '/common/config/security.php', 'Yii2 advanced target');
+            $this->assertFileDoesNotExist($this->root . '/config/security.php');
+        }
+
+        public function testActivatePublishesConfigForYii3Project(): void
+        {
+            @mkdir($this->root . '/config/common', 0755, true);
+            @mkdir($this->root . '/config/web', 0755, true);
+            file_put_contents($this->root . '/config/common/params.php', '<?php');
+            file_put_contents($this->root . '/config/web/params.php', '<?php');
+
+            (new Installer())->activate(new \Composer\Composer($this->root . '/vendor'), new \Composer\IO\BufferIO());
+
+            $this->assertFileExists($this->root . '/config/security.php', 'Yii3 target');
+        }
+
         public function testActivateDoesNotPublishForUnknownProject(): void
         {
             (new Installer())->activate(new \Composer\Composer($this->root . '/vendor'), new \Composer\IO\BufferIO());
@@ -156,6 +192,8 @@ namespace Erikwang2013\Security\Tests\Core {
             $this->assertFalse(\Erikwang2013\Security\Composer\isWebman($this->root));
             $this->assertFalse(\Erikwang2013\Security\Composer\isThinkPHP($this->root));
             $this->assertFalse(\Erikwang2013\Security\Composer\isHyperf($this->root));
+            $this->assertFalse(\Erikwang2013\Security\Composer\isYii2($this->root));
+            $this->assertFalse(\Erikwang2013\Security\Composer\isYii3($this->root));
 
             file_put_contents($this->root . '/artisan', '<?php');
             $this->assertFalse(\Erikwang2013\Security\Composer\isLaravel($this->root), 'artisan alone is not enough');
@@ -177,6 +215,18 @@ namespace Erikwang2013\Security\Tests\Core {
             $this->assertFalse(\Erikwang2013\Security\Composer\isHyperf($this->root), 'hyperf.php alone is not enough');
             @mkdir($this->root . '/config/autoload', 0755, true);
             $this->assertTrue(\Erikwang2013\Security\Composer\isHyperf($this->root));
+
+            file_put_contents($this->root . '/yii', '<?php');
+            $this->assertFalse(\Erikwang2013\Security\Composer\isYii2($this->root), 'the console entry alone is not enough');
+            @mkdir($this->root . '/common/config', 0755, true);
+            $this->assertTrue(\Erikwang2013\Security\Composer\isYii2($this->root));
+
+            @mkdir($this->root . '/config/common', 0755, true);
+            file_put_contents($this->root . '/config/common/params.php', '<?php');
+            $this->assertFalse(\Erikwang2013\Security\Composer\isYii3($this->root), 'common/params.php alone is not enough');
+            @mkdir($this->root . '/config/web', 0755, true);
+            file_put_contents($this->root . '/config/web/params.php', '<?php');
+            $this->assertTrue(\Erikwang2013\Security\Composer\isYii3($this->root));
         }
 
         private function rmDir(string $dir): void
